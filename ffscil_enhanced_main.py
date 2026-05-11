@@ -298,12 +298,12 @@ def main(args):
                 all_global_prototype_var[k] = global_prototype_var[k]
 
             if n_round < (args.rounds_per_task - 1):
-                FedWeightedAvg(server_model, [models_list[i] for i in clients_index], clients_weight, args.distributed)
+                FedWeightedAvg(server_model, [models_list[i] for i in active_clients], clients_weight, args.distributed)
             else:
                 if task_id == 0:
-                    FedWeightedAvgWithHead(server_model, [models_list[i] for i in clients_index], clients_weight, args.distributed)
+                    FedWeightedAvgWithHead(server_model, [models_list[i] for i in active_clients], clients_weight, args.distributed)
                 else:
-                    FedWeightedAvg(server_model, [models_list[i] for i in clients_index], clients_weight, args.distributed)
+                    FedWeightedAvg(server_model, [models_list[i] for i in active_clients], clients_weight, args.distributed)
 
             all_time_round += 1
 
