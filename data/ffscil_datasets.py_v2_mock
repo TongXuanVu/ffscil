@@ -1,0 +1,71 @@
+import random
+import torch
+from torch.utils.data.dataset import Subset
+from torchvision import datasets, transforms
+from timm.data import create_transform
+from dualpromptlib.continual_datasets.continual_datasets import *
+import dualpromptlib.utils as utils
+
+class Lambda(transforms.Lambda):
+    def __init__(self, lambd, nb_classes):
+        super().__init__(lambd)
+        self.nb_classes = nb_classes
+    def __call__(self, img):
+        return self.lambd(img, self.nb_classes)
+
+def target_transform(x, nb_classes):
+    return x + nb_classes
+
+def build_continual_dataloader(args):
+    print(f"DEBUG: build_continual_dataloader called with dataset={args.dataset}")
+    if args.dataset == 'cic_iot23':
+        print("Using Mock CIC-IoT23 Dataset for Debug (1D Features)...")
+        # Realistic mock data distribution
+        num_tasks = args.num_tasks
+        nb_classes = args.nb_classes
+        classes_per_task = nb_classes // num_tasks
+        
+        class_mask = []
+        for i in range(num_tasks):
+            start_cls = i * classes_per_task
+            end_cls = (i + 1) * classes_per_task if i < num_tasks - 1 else nb_classes
+            class_mask.append(list(range(start_cls, end_cls)))
+            
+        dataset_list = []
+        for t in range(num_tasks):
+            task_classes = class_mask[t]
+            # Train data only for this task
+            num_samples_t = 200
+            x_train_t = torch.randn(num_samples_t, 78)
+            y_train_t = torch.tensor([random.choice(task_classes) for _ in range(num_samples_t)])
+            
+            # Val data only for this task
+            num_val_t = 50
+            x_test_t = torch.randn(num_val_t, 78)
+            y_test_t = torch.tensor([random.choice(task_classes) for _ in range(num_val_t)])
+            
+            t_loader = torch.utils.data.DataLoader(
+                torch.utils.data.TensorDataset(x_train_t, y_train_t),
+                batch_size=args.batch_size, shuffle=True
+            )
+            v_loader = torch.utils.data.DataLoader(
+                torch.utils.data.TensorDataset(x_test_t, y_test_t),
+                batch_size=args.batch_size, shuffle=False
+            )
+            dataset_list.append({'train': t_loader, 'val': v_loader})
+            
+        return dataset_list, class_mask
+
+    dataloader = list()
+    class_mask = list() if args.task_inc or args.train_mask else None
+    transform_train = build_transform(True, args)
+    transform_val = build_transform(False, args)
+
+    if args.dataset.startswith('Split-'):
+        # ... rest of original code ...
+        pass
+    return dataloader, class_mask
+
+def build_transform(is_train, args):
+    # ... rest of original code ...
+    pass

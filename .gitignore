@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+output/
+output_iot_cnn1d/
+debug_iot_cnn1d/
+dataset/
+*.csv
+*.parquet
+*.h5
+*.pth
+*.ckpt
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.git/
