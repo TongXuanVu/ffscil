@@ -241,7 +241,7 @@ def main(args):
             for i in clients_index: clients_participations[i] += 1
             
             # Filter clients that actually have data for this task
-            active_clients = [i for i in clients_index if len(data_loaders[i][task_id]['train'].dataset) > 0]
+            active_clients = [i for i in clients_index if data_loaders[i][task_id]['train'] is not None]
             if not active_clients:
                 print(f"Skipping Round {n_round+1} for Task {task_id+1}: No clients have data.")
                 continue

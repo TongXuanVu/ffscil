@@ -60,11 +60,13 @@ def build_continual_dataloader(args, client_id=0):
             t_loader = DataLoader(
                 train_ds, batch_size=args.batch_size, 
                 shuffle=True, num_workers=args.num_workers, pin_memory=args.pin_mem
-            )
+            ) if len(train_ds) > 0 else None
+            
             v_loader = DataLoader(
                 val_ds, batch_size=args.batch_size, 
                 shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_mem
-            )
+            ) if len(val_ds) > 0 else None
+            
             dataset_list.append({'train': t_loader, 'val': v_loader})
             
         return dataset_list, class_mask
