@@ -57,31 +57,33 @@ def main(args):
     optimizers=[]
     lr_schedulers=[]
 
-    # Build Dataloaders
-    data_loader, class_mask = build_continual_dataloader(args, client_id=0)
-    data_loaders.append(data_loader)
-    class_masks.append(class_mask)
+    # Initial class mask build (to get test_sizes and class structure)
+    _, full_class_mask = build_continual_dataloader(args, client_id=0)
     
-    for i in range(1, args.num_clients):
-        dl, cm = build_continual_dataloader(args, client_id=i)
-        data_loaders.append(dl)
-        class_masks.append(cm)
-    print("DEBUG: DONE Building Dataloaders")
-
-    # Test sizes for weighted metrics
+    # Test sizes for weighted metrics (pre-compute using metadata or one-by-one)
     test_sizes = []
-    for t in range(0, args.num_tasks):
-        data_loader0 = data_loader[t]['val']
-        label_list = []
-        for input, target in data_loader0:
-            label_list.extend(target)
-        test_sizes.append(len(label_list))
+    for t in range(1, args.num_tasks + 1):
+        # We need validation loader to get size. Let's load only validation for this check.
+        # Alternatively, we can use 1000 as a dummy if not strictly needed for weighted avg,
+        # but let's try to get real sizes.
+        v_loader_list, _ = build_continual_dataloader(args, client_id=0, specific_task=t)
+        v_loader = v_loader_list[t-1]['val']
+        if v_loader is not None:
+            test_sizes.append(len(v_loader.dataset))
+        else:
+            test_sizes.append(0)
+    
+    print(f"Test sizes per task: {test_sizes}")
+
+    # Dataloaders will be populated per task
+    data_loaders = [None] * args.num_clients
+    class_masks = [None] * args.num_clients
 
     # Create Models
     if args.model == 'cnn1d_prompt':
-        print(f"Creating 1D-CNN Prompt model for IoT data (input_dim=78)...")
-        original_model = create_cnn1d_prompt(input_dim=78, num_classes=args.nb_classes).to(device)
-        server_model = create_cnn1d_prompt(input_dim=78, num_classes=args.nb_classes).to(device)
+        print(f"Creating 1D-CNN Prompt model for IoT data (input_dim={args.input_size})...")
+        original_model = create_cnn1d_prompt(input_dim=args.input_size, num_classes=args.nb_classes).to(device)
+        server_model = create_cnn1d_prompt(input_dim=args.input_size, num_classes=args.nb_classes).to(device)
     else:
         original_model = create_model(
             args.model,
@@ -207,6 +209,14 @@ def main(args):
     FedAvgWithHead(server_model, models_list, args.distributed)
 
     for task_id in range(start_task, args.num_tasks):
+        # Build dataloaders ONLY for the current task for ALL clients
+        for i in range(args.num_clients):
+            dl, cm = build_continual_dataloader(args, client_id=i, specific_task=task_id+1)
+            data_loaders[i] = dl
+            class_masks[i] = cm
+            
+        print(f"\n{'='*20} Starting Task {task_id+1}/{args.num_tasks} {'='*20}")
+        print(f"Loaded data for Task {task_id+1}")
         if task_id > 0:
             args.classes_per_task = args.fs_classes
             args.available_classes = args.available_fs_classes

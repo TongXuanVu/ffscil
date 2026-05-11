@@ -30,28 +30,37 @@ class CICIoT23PTDataset(Dataset):
     def __getitem__(self, index):
         return self.x[index], self.y[index]
 
-def build_continual_dataloader(args, client_id=0):
+def build_continual_dataloader(args, client_id=0, specific_task=None):
     if args.dataset == 'cic_iot23':
         data_path = args.data_path
         num_tasks = args.num_tasks
         
         # Build class mask by looking at centralized data
         class_mask = []
+        tasks_to_load = range(1, num_tasks + 1) if specific_task is None else [specific_task]
+        
+        # Build class mask (we might need all tasks' masks for evaluation)
+        full_class_mask = []
         for t in range(1, num_tasks + 1):
             central_path = os.path.join(data_path, "centralized_data", f"centralized_task_{t}.pt")
             if os.path.exists(central_path):
                 data = torch.load(central_path, map_location='cpu', weights_only=False)
                 unique_labels = torch.unique(data['y']).tolist()
-                class_mask.append(unique_labels)
+                full_class_mask.append(unique_labels)
             else:
-                # Fallback if centralized data is missing
                 classes_per_task = args.nb_classes // num_tasks
                 start = (t-1) * classes_per_task
                 end = t * classes_per_task
-                class_mask.append(list(range(start, end)))
+                full_class_mask.append(list(range(start, end)))
         
         dataset_list = []
+        # If specific_task is provided, we return a list where only that task index is filled
+        # to maintain compatibility with the list-of-tasks structure
         for t in range(1, num_tasks + 1):
+            if specific_task is not None and t != specific_task:
+                dataset_list.append(None)
+                continue
+                
             # Load training data for this client and task
             train_ds = CICIoT23PTDataset(data_path, client_id, t, is_train=True)
             # Load validation data (centralized for the task)
@@ -69,7 +78,7 @@ def build_continual_dataloader(args, client_id=0):
             
             dataset_list.append({'train': t_loader, 'val': v_loader})
             
-        return dataset_list, class_mask
+        return dataset_list, full_class_mask
 
     # ... rest of original code (not used for IoT) ...
     dataloader = list()
