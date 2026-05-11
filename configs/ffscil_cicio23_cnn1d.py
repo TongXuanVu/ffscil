@@ -1,23 +1,23 @@
 import argparse
 
 def get_args_parser(subparser):
-    subparser.add_argument('--batch-size', default=64, type=int, help='Batch size per device')
+    subparser.add_argument('--batch-size', default=8192, type=int, help='Batch size per device')
     subparser.add_argument('--epochs', default=1, type=int) # Base task epochs
     subparser.add_argument('--fs_epochs', default=1, type=int) # Few-shot task epochs
-    subparser.add_argument('--num_tasks', default=5, type=int)
-    subparser.add_argument('--nb_classes', default=33, type=int)
-    subparser.add_argument('--num_clients', default=5, type=int)
-    subparser.add_argument('--local_clients', default=5, type=int)
+    subparser.add_argument('--num_tasks', default=6, type=int)
+    subparser.add_argument('--nb_classes', default=36, type=int)
+    subparser.add_argument('--num_clients', default=10, type=int)
+    subparser.add_argument('--local_clients', default=10, type=int)
     subparser.add_argument('--rounds_per_task', default=30, type=int)
-    subparser.add_argument('--base_classes', default=10, type=int)
-    subparser.add_argument('--fs_classes', default=5, type=int)
+    subparser.add_argument('--base_classes', default=6, type=int)
+    subparser.add_argument('--fs_classes', default=6, type=int)
     subparser.add_argument('--fs_shots', default=5, type=int)
-    subparser.add_argument('--available_base_classes', default=10, type=int)
-    subparser.add_argument('--available_fs_classes', default=5, type=int)
+    subparser.add_argument('--available_base_classes', default=6, type=int)
+    subparser.add_argument('--available_fs_classes', default=6, type=int)
 
     # Model parameters
     subparser.add_argument('--model', default='cnn1d_prompt', type=str, help='Name of model to train')
-    subparser.add_argument('--input-size', default=78, type=int, help='input size of IoT features')
+    subparser.add_argument('--input-size', default=33, type=int, help='input size of IoT features')
     subparser.add_argument('--pretrained', action='store_true', default=False)
     subparser.add_argument('--drop', type=float, default=0.0, metavar='PCT', help='Dropout rate (default: 0.)')
     subparser.add_argument('--drop-path', type=float, default=0.0, metavar='PCT', help='Drop path rate (default: 0.)')
@@ -50,9 +50,9 @@ def get_args_parser(subparser):
     subparser.add_argument('--train-interpolation', type=str, default='bicubic', help='Training interpolation (random, bilinear, bicubic default: "bicubic")')
 
     # Evaluation parameters
-    subparser.add_argument('--data-path', default='/path/to/cicio23', type=str, help='dataset path')
+    subparser.add_argument('--data-path', default=r'C:\FederatedLearning\FL\core\data_split', type=str, help='dataset path')
     subparser.add_argument('--dataset', default='cic_iot23', type=str, help='dataset name')
-    subparser.add_argument('--output_dir', default='./output_iot_cnn1d', help='path where to save, empty for no saving')
+    subparser.add_argument('--output_dir', default='./output_iot_real', help='path where to save, empty for no saving')
     subparser.add_argument('--device', default='cpu', help='device to use for training / testing')
     subparser.add_argument('--num_workers', default=4, type=int)
     subparser.add_argument('--pin-mem', action='store_true', help='Pin CPU memory in DataLoader for more efficient (faster) transfer to GPU.')

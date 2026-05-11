@@ -58,12 +58,12 @@ def main(args):
     lr_schedulers=[]
 
     # Build Dataloaders
-    data_loader, class_mask = build_continual_dataloader(args)
+    data_loader, class_mask = build_continual_dataloader(args, client_id=0)
     data_loaders.append(data_loader)
     class_masks.append(class_mask)
     
     for i in range(1, args.num_clients):
-        dl, cm = build_continual_dataloader(args)
+        dl, cm = build_continual_dataloader(args, client_id=i)
         data_loaders.append(dl)
         class_masks.append(cm)
     print("DEBUG: DONE Building Dataloaders")
@@ -239,39 +239,46 @@ def main(args):
                 FedDistribute(server_model,[models_list[i] for i in idx_notrain],args.distributed)
 
             for i in clients_index: clients_participations[i] += 1
-            clients_weight = [clients_participations[i] for i in clients_index]
+            
+            # Filter clients that actually have data for this task
+            active_clients = [i for i in clients_index if len(data_loaders[i][task_id]['train'].dataset) > 0]
+            if not active_clients:
+                print(f"Skipping Round {n_round+1} for Task {task_id+1}: No clients have data.")
+                continue
+                
+            clients_weight = [clients_participations[i] for i in active_clients]
 
             # Local Training
             if task_id == 0:
                 if n_round == 0:
                     clients_prototype, clients_prototype_var = train_pertask(
-                        [models_list[i] for i in clients_index], [models_without_ddp[i] for i in clients_index], 
-                        [original_models[i] for i in clients_index], criterion, [data_loaders[i] for i in clients_index],
-                        [optimizers[i] for i in clients_index], [lr_schedulers[i] for i in clients_index],
-                        device, [class_masks[i] for i in clients_index], task_id, args)
+                        [models_list[i] for i in active_clients], [models_without_ddp[i] for i in active_clients], 
+                        [original_models[i] for i in active_clients], criterion, [data_loaders[i] for i in active_clients],
+                        [optimizers[i] for i in active_clients], [lr_schedulers[i] for i in active_clients],
+                        device, [class_masks[i] for i in active_clients], task_id, args)
                 else:
                     clients_prototype, clients_prototype_var = train_pertask_v2(
-                        [models_list[i] for i in clients_index], [models_without_ddp[i] for i in clients_index], 
-                        [original_models[i] for i in clients_index], criterion, [data_loaders[i] for i in clients_index],
-                        [optimizers[i] for i in clients_index], [lr_schedulers[i] for i in clients_index],
-                        device, [class_masks[i] for i in clients_index], task_id, global_prototype, global_prototype_var, args)
+                        [models_list[i] for i in active_clients], [models_without_ddp[i] for i in active_clients], 
+                        [original_models[i] for i in active_clients], criterion, [data_loaders[i] for i in active_clients],
+                        [optimizers[i] for i in active_clients], [lr_schedulers[i] for i in active_clients],
+                        device, [class_masks[i] for i in active_clients], task_id, global_prototype, global_prototype_var, args)
             else:
                 if n_round == 0:
                     clients_prototype, clients_prototype_var = generate_prototype_only(
-                        [models_list[i] for i in clients_index], [models_without_ddp[i] for i in clients_index], 
-                        [original_models[i] for i in clients_index], criterion, [data_loaders[i] for i in clients_index],
-                        [optimizers[i] for i in clients_index], [lr_schedulers[i] for i in clients_index],
-                        device, [class_masks[i] for i in clients_index], task_id, args)
+                        [models_list[i] for i in active_clients], [models_without_ddp[i] for i in active_clients], 
+                        [original_models[i] for i in active_clients], criterion, [data_loaders[i] for i in active_clients],
+                        [optimizers[i] for i in active_clients], [lr_schedulers[i] for i in active_clients],
+                        device, [class_masks[i] for i in active_clients], task_id, args)
                     global_prototype, global_prototype_var = FedWeightedAvgPrototype(clients_prototype,clients_prototype_var,clients_weight,task_id,args)
                     for k in global_prototype.keys():
                         all_global_prototype[k] = global_prototype[k]
                         all_global_prototype_var[k] = global_prototype_var[k]
 
                 clients_prototype, clients_prototype_var = train_fs_pertask_v2(
-                    [models_list[i] for i in clients_index], [models_without_ddp[i] for i in clients_index], 
-                    [original_models[i] for i in clients_index], criterion, [data_loaders[i] for i in clients_index],
-                    [optimizers[i] for i in clients_index], [lr_schedulers[i] for i in clients_index],
-                    device, [class_masks[i] for i in clients_index], task_id, global_prototype, global_prototype_var, 
+                    [models_list[i] for i in active_clients], [models_without_ddp[i] for i in active_clients], 
+                    [original_models[i] for i in active_clients], criterion, [data_loaders[i] for i in active_clients],
+                    [optimizers[i] for i in active_clients], [lr_schedulers[i] for i in active_clients],
+                    device, [class_masks[i] for i in active_clients], task_id, global_prototype, global_prototype_var, 
                     all_global_prototype, all_global_prototype_var, args)
 
             # Global Aggregation
