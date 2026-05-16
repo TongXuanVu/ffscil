@@ -444,7 +444,5 @@ if __name__ == '__main__':
     get_args_parser(config_parser)
     
     args = parser.parse_args()
-    if args.rounds_per_task_override:
-        args.rounds_per_task = args.rounds_per_task_override
     if args.output_dir: Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     main(args)
