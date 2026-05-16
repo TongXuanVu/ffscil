@@ -35,10 +35,6 @@ def main(args):
     utils.init_distributed_mode(args)
     device = torch.device(args.device)
 
-    # Re-enforcing some args as per user request
-    if args.batch_size_override:
-        args.batch_size = args.batch_size_override
-
     args.use_g_prompt = False
     args.use_prefix_tune_for_g_prompt = False
     args.e_prompt_layer_idx = [0,1,2,3,4]
