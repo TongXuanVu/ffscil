@@ -407,7 +407,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('FFSCIL Enhanced Training and Evaluation')
-    parser.add_argument('--output_dir', default='./output_enhanced/', type=str)
+    parser.add_argument('--output_dir', default='./output_iot_cnn1d/', type=str)
     parser.add_argument('--resume', default='', type=str, help='Đường dẫn checkpoint để TIẾP TỤC huấn luyện')
     parser.add_argument('--test_ckpt', default='', type=str, help='Đường dẫn checkpoint để CHỈ KIỂM THỬ một file')
     parser.add_argument('--test_all', action='store_true', help='Kiểm thử TOÀN BỘ checkpoints trong thư mục output')
