@@ -2101,15 +2101,22 @@ def evaluate_till_now3(model: torch.nn.Module, original_model: torch.nn.Module, 
     print(f"FPR Avg  | {fpr_avg:.4f}\n")
 
     # Save to CSV
-    csv_path = os.path.join(args.output_dir, 'metrics_log.csv')
+    csv_path = os.path.join(args.output_dir, 'round_metrics.csv')
     file_exists = os.path.isfile(csv_path)
     with open(csv_path, mode='a', newline='') as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(['task_id', 'acc1', 'acc5', 'loss', 'p_micro', 'r_micro', 'f1_micro', 
-                             'p_macro', 'r_macro', 'f1_macro', 'p_weighted', 'r_weighted', 'f1_weighted', 'fpr'])
-        writer.writerow([task_id+1, avg_stat[0], avg_stat[1], avg_stat[2], p_micro, r_micro, f1_micro, 
-                         p_macro, r_macro, f1_macro, p_weighted, r_weighted, f1_weighted, fpr_avg])
+            writer.writerow(['task_id', 'round', 'acc1', 'acc5', 'loss', 
+                             'p_micro', 'r_micro', 'f1_micro', 
+                             'p_macro', 'r_macro', 'f1_macro', 
+                             'p_weighted', 'r_weighted', 'f1_weighted', 'fpr'])
+        
+        # Use round_id if provided (passed through args or directly)
+        current_round = getattr(args, 'current_round', -1)
+        writer.writerow([task_id+1, current_round, avg_stat[0], avg_stat[1], avg_stat[2], 
+                         p_micro, r_micro, f1_micro, 
+                         p_macro, r_macro, f1_macro, 
+                         p_weighted, r_weighted, f1_weighted, fpr_avg])
 
     return test_stats, avg_stat, base_classes_stat, novel_classes_stat, twavg_stat, true_labels, pred_labels
 
@@ -2164,5 +2171,12 @@ def evaluate_server_global_model3(model, model_without_ddp, original_model,
 
     from sklearn.metrics import confusion_matrix
     conf_mat = confusion_matrix(true_labels, pred_labels)
-    print("Confussion Matrix at task-"+str(task_id+1))
-    print(conf_mat.tolist())
+    # Save Confusion Matrix to JSON
+    current_round = getattr(args, 'current_round', -1)
+    cm_dir = os.path.join(args.output_dir, 'confusion_matrices')
+    os.makedirs(cm_dir, exist_ok=True)
+    cm_path = os.path.join(cm_dir, f'cm_task{task_id+1}_round{current_round}.json')
+    with open(cm_path, 'w') as f_cm:
+        import json
+        json.dump(conf_mat.tolist(), f_cm)
+    print(f"Confusion Matrix saved to {cm_path}")

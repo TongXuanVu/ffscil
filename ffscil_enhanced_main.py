@@ -63,11 +63,9 @@ def main(args):
     # Test sizes for weighted metrics (pre-compute using metadata or one-by-one)
     test_sizes = []
     for t in range(1, args.num_tasks + 1):
-        # We need validation loader to get size. Let's load only validation for this check.
-        # Alternatively, we can use 1000 as a dummy if not strictly needed for weighted avg,
-        # but let's try to get real sizes.
-        v_loader_list, _ = build_continual_dataloader(args, client_id=0, specific_task=t)
-        v_loader = v_loader_list[t-1]['val']
+        v_loader_list, _ = build_continual_dataloader(args, client_id=0, specific_task=t-1)
+        # build_continual_dataloader returns [task_list], so we need v_loader_list[0]
+        v_loader = v_loader_list[0][t-1]['val']
         if v_loader is not None:
             test_sizes.append(len(v_loader.dataset))
         else:
@@ -169,10 +167,10 @@ def main(args):
     fixed_FC_dict = None
     fixed_FC_dict2 = None
 
-    # Resume Logic
+    # 1. Logic RESUME (Nạp để chạy tiếp huấn luyện)
     if args.resume:
         if os.path.isfile(args.resume):
-            print(f"=> loading checkpoint '{args.resume}'")
+            print(f"=> RESUME: Loading checkpoint '{args.resume}'")
             checkpoint = torch.load(args.resume, map_location='cpu')
             server_model_without_ddp.load_state_dict(checkpoint['state_dict'])
             server_optimizer.load_state_dict(checkpoint['optimizer'])
@@ -184,24 +182,77 @@ def main(args):
             fixed_FC_dict = checkpoint.get('fixed_FC_dict')
             fixed_FC_dict2 = checkpoint.get('fixed_FC_dict2')
             
-            # Reset rounds if task finished
             if start_round >= args.rounds_per_task:
                 start_round = 0
                 start_task += 1
             
-            # Sync clients
             FedDistribute(server_model, models_list, args.distributed)
-            print(f"=> loaded checkpoint '{args.resume}' (task {start_task}, round {start_round})")
+            print(f"=> RESUME: Success. Starting from Task {start_task}, Round {start_round}")
         else:
-            print(f"=> no checkpoint found at '{args.resume}'")
+            print(f"=> RESUME: No checkpoint found at '{args.resume}'")
 
-    if args.eval:
-        print("=> Running in EVAL mode")
-        for t in range(start_task + 1):
+    # 2. Logic TEST (Nạp để chỉ đánh giá một checkpoint cụ thể)
+    if args.test_ckpt:
+        if os.path.isfile(args.test_ckpt):
+            print(f"=> TEST: Loading checkpoint '{args.test_ckpt}'")
+            checkpoint = torch.load(args.test_ckpt, map_location='cpu')
+            server_model_without_ddp.load_state_dict(checkpoint['state_dict'])
+            
+            curr_task = checkpoint['task_id']
+            data_loaders_eval, _ = build_continual_dataloader(args, client_id=0, specific_task=curr_task)
+            data_loaders[0] = data_loaders_eval[0]
+            
+            for t in range(curr_task + 1):
+                print(f"\n[TEST MODE] Đánh giá Task {t+1}...")
+                evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
+                                    criterion, data_loaders[0], server_optimizer, None,
+                                    device, None, t, test_sizes, 
+                                    checkpoint.get('all_global_prototype', {}), 
+                                    checkpoint.get('all_global_prototype_var', {}), args)
+            return
+        else:
+            print(f"=> TEST: No checkpoint found at '{args.test_ckpt}'")
+            return
+
+    # 3. Logic TEST_ALL (Tự động kiểm thử toàn bộ 180 checkpoint)
+    if args.test_all:
+        print(f"=> TEST_ALL: Quét thư mục '{args.output_dir}' để tìm checkpoints...")
+        import re
+        ckpt_files = [f for f in os.listdir(args.output_dir) if f.startswith('checkpoint_task') and f.endswith('.pth')]
+        
+        # Hàm để lấy task_id và round_id từ tên file để sắp xếp
+        def sort_key(filename):
+            match = re.search(r'task(\d+)_round(\d+)', filename)
+            if match:
+                return (int(match.group(1)), int(match.group(2)))
+            return (999, 999)
+
+        ckpt_files.sort(key=sort_key)
+        print(f"=> TEST_ALL: Tìm thấy {len(ckpt_files)} checkpoints. Bắt đầu kiểm thử...")
+
+        # Nạp sẵn toàn bộ dataloaders cho client 0 (Max task) để dùng chung cho nhanh
+        data_loaders_eval, _ = build_continual_dataloader(args, client_id=0, specific_task=args.num_tasks - 1)
+        data_loaders[0] = data_loaders_eval[0]
+
+        for ckpt_name in ckpt_files:
+            ckpt_path = os.path.join(args.output_dir, ckpt_name)
+            print(f"\n{'#'*30}")
+            print(f" TESTING CHECKPOINT: {ckpt_name}")
+            print(f"{'#'*30}")
+            
+            checkpoint = torch.load(ckpt_path, map_location='cpu')
+            server_model_without_ddp.load_state_dict(checkpoint['state_dict'])
+            curr_task = checkpoint['task_id']
+            args.current_round = checkpoint['n_round'] + 1 # Để engine ghi log đúng round
+
+            # Đánh giá trên tất cả các task đã học tính đến checkpoint này
             evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
                                 criterion, data_loaders[0], server_optimizer, None,
-                                device, None, t, test_sizes, 
-                                all_global_prototype, all_global_prototype_var, args)
+                                device, None, curr_task, test_sizes, 
+                                checkpoint.get('all_global_prototype', {}), 
+                                checkpoint.get('all_global_prototype_var', {}), args)
+        
+        print("\n=> TEST_ALL: Hoàn tất kiểm thử toàn bộ checkpoints.")
         return
 
     # Training Loop
@@ -209,10 +260,12 @@ def main(args):
     FedAvgWithHead(server_model, models_list, args.distributed)
 
     for task_id in range(start_task, args.num_tasks):
-        # Build dataloaders ONLY for the current task for ALL clients
+        # Tối ưu RAM: Dataloaders được nạp cho từng client trong vòng lặp dưới đây.
+        
         for i in range(args.num_clients):
-            dl, cm = build_continual_dataloader(args, client_id=i, specific_task=task_id+1)
-            data_loaders[i] = dl
+            dl, cm = build_continual_dataloader(args, client_id=i, specific_task=task_id)
+            # dl is [task_list], we want data_loaders[i] to be the task_list
+            data_loaders[i] = dl[0]
             class_masks[i] = cm
             
         print(f"\n{'='*20} Starting Task {task_id+1}/{args.num_tasks} {'='*20}")
@@ -308,8 +361,8 @@ def main(args):
             all_time_round += 1
 
             # Save Checkpoint every round
-            checkpoint_path = os.path.join(args.output_dir, f'checkpoint_task{task_id}_round{n_round}.pth')
-            save_checkpoint({
+            checkpoint_name = f'checkpoint_task{task_id}_round{n_round}.pth'
+            checkpoint_data = {
                 'task_id': task_id,
                 'n_round': n_round,
                 'all_time_round': all_time_round,
@@ -319,8 +372,20 @@ def main(args):
                 'all_global_prototype_var': all_global_prototype_var,
                 'fixed_FC_dict': fixed_FC_dict,
                 'fixed_FC_dict2': fixed_FC_dict2,
-            }, False, args.output_dir, filename=f'checkpoint_latest.pth')
-            print(f"Checkpoint saved to {args.output_dir}/checkpoint_latest.pth")
+            }
+            # Lưu file theo task/round để giữ lịch sử
+            save_checkpoint(checkpoint_data, False, args.output_dir, filename=checkpoint_name)
+            # Lưu file latest để dễ dàng resume
+            save_checkpoint(checkpoint_data, False, args.output_dir, filename='checkpoint_latest.pth')
+            print(f"Checkpoints saved: {checkpoint_name} and checkpoint_latest.pth")
+
+            # === ĐÁNH GIÁ CHI TIẾT SAU MỖI ROUND ===
+            print(f"\n[ROUND EVAL] Đang đánh giá Round {n_round+1} của Task {task_id+1}...")
+            args.current_round = n_round + 1 # Lưu vào args để engine truy cập
+            evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
+                                criterion, data_loaders[0], server_optimizer, None,
+                                device, None, task_id, test_sizes, 
+                                all_global_prototype, all_global_prototype_var, args)
 
         # End of Task logic
         FedDistribute(server_model, models_list, args.distributed)
@@ -343,10 +408,9 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('FFSCIL Enhanced Training and Evaluation')
     parser.add_argument('--output_dir', default='./output_enhanced/', type=str)
-    parser.add_argument('--resume', default='', type=str, help='path to latest checkpoint')
-    parser.add_argument('--batch_size_override', default=None, type=int, help='Override batch size (e.g. 8192)')
-    parser.add_argument('--rounds_per_task_override', default=None, type=int, help='Override rounds per task (e.g. 30)')
-    parser.add_argument('--eval', default=False, type=bool, help='Run in evaluation mode')
+    parser.add_argument('--resume', default='', type=str, help='Đường dẫn checkpoint để TIẾP TỤC huấn luyện')
+    parser.add_argument('--test_ckpt', default='', type=str, help='Đường dẫn checkpoint để CHỈ KIỂM THỬ một file')
+    parser.add_argument('--test_all', action='store_true', help='Kiểm thử TOÀN BỘ checkpoints trong thư mục output')
 
     # Parse known args to find the config name
     known_args, remaining = parser.parse_known_args()
