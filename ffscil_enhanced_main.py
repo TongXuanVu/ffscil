@@ -38,6 +38,18 @@ def main(args):
     args.use_g_prompt = False
     args.use_prefix_tune_for_g_prompt = False
     args.e_prompt_layer_idx = [0,1,2,3,4]
+
+    # [OPT] Ghi đè số clients/round nếu được chỉ định qua args
+    if hasattr(args, 'local_clients_override') and args.local_clients_override:
+        args.local_clients = args.local_clients_override
+        print(f"[OPT] Client sampling: {args.local_clients}/{args.num_clients} clients/round")
+
+    # [OPT] AMP scaler cho Mixed Precision Training
+    use_amp = getattr(args, 'use_amp', False) and torch.cuda.is_available()
+    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+    if use_amp:
+        print("[OPT] AMP (Mixed Precision) ENABLED")
+    args._amp_scaler = scaler  # Đưa scaler vào args để engine sử dụng
     
     seed = args.seed
     torch.manual_seed(seed)
@@ -356,8 +368,7 @@ def main(args):
 
             all_time_round += 1
 
-            # Save Checkpoint every round
-            checkpoint_name = f'checkpoint_task{task_id}_round{n_round}.pth'
+            # [OPT] Chỉ lưu 1 file latest mỗi round (giảm I/O 50%)
             checkpoint_data = {
                 'task_id': task_id,
                 'n_round': n_round,
@@ -369,11 +380,8 @@ def main(args):
                 'fixed_FC_dict': fixed_FC_dict,
                 'fixed_FC_dict2': fixed_FC_dict2,
             }
-            # Lưu file theo task/round để giữ lịch sử
-            save_checkpoint(checkpoint_data, False, args.output_dir, filename=checkpoint_name)
-            # Lưu file latest để dễ dàng resume
             save_checkpoint(checkpoint_data, False, args.output_dir, filename='checkpoint_latest.pth')
-            print(f"Checkpoints saved: {checkpoint_name} and checkpoint_latest.pth")
+            print(f"[Round {n_round+1}/{args.rounds_per_task}] checkpoint_latest.pth saved")
 
         # End of Task logic
         FedDistribute(server_model, models_list, args.distributed)
@@ -385,8 +393,13 @@ def main(args):
             server_model.head.load_state_dict(fixed_FC_dict)
             server_model_without_ddp.head.load_state_dict(fixed_FC_dict2)
 
-        # Đánh giá cuối mỗi Task (6 lần tổng, thay vì 180 lần như trước)
-        args.current_round = args.rounds_per_task  # Đánh dấu cuối task trong log
+        # [OPT] Lưu checkpoint đặt tên theo task (chỉ 6 lần, tiết kiệm I/O)
+        task_ckpt_name = f'checkpoint_task{task_id}_final.pth'
+        save_checkpoint(checkpoint_data, False, args.output_dir, filename=task_ckpt_name)
+        print(f"[TASK {task_id+1}] Task checkpoint saved: {task_ckpt_name}")
+
+        # Đánh giá cuối mỗi Task (6 lần tổng)
+        args.current_round = args.rounds_per_task
         print(f"\n[TASK EVAL] Đánh giá sau khi hoàn thành Task {task_id+1}/{args.num_tasks}...")
         evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
                             criterion, data_loaders[0], server_optimizer, None,
@@ -402,6 +415,9 @@ if __name__ == '__main__':
     parser.add_argument('--resume', default='', type=str, help='Đường dẫn checkpoint để TIẾP TỤC huấn luyện')
     parser.add_argument('--test_ckpt', default='', type=str, help='Đường dẫn checkpoint để CHỈ KIỂM THỬ một file')
     parser.add_argument('--test_all', action='store_true', help='Kiểm thử TOÀN BỘ checkpoints trong thư mục output')
+    # Tối ưu tốc độ
+    parser.add_argument('--local_clients_override', default=None, type=int, help='[OPT] Ghi đè số clients tham gia mỗi round. VD: 5 thay vì 10')
+    parser.add_argument('--use_amp', action='store_true', help='[OPT] Dùng Mixed Precision (AMP) để tăng tốc GPU')
 
     # Parse known args to find the config name
     known_args, remaining = parser.parse_known_args()
