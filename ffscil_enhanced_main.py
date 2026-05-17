@@ -39,11 +39,6 @@ def main(args):
     args.use_prefix_tune_for_g_prompt = False
     args.e_prompt_layer_idx = [0,1,2,3,4]
 
-    # [OPT] Ghi đè số clients/round nếu được chỉ định qua args
-    if hasattr(args, 'local_clients_override') and args.local_clients_override:
-        args.local_clients = args.local_clients_override
-        print(f"[OPT] Client sampling: {args.local_clients}/{args.num_clients} clients/round")
-
     # [OPT] AMP scaler cho Mixed Precision Training
     use_amp = getattr(args, 'use_amp', False) and torch.cuda.is_available()
     scaler = torch.cuda.amp.GradScaler() if use_amp else None
@@ -368,7 +363,8 @@ def main(args):
 
             all_time_round += 1
 
-            # [OPT] Chỉ lưu 1 file latest mỗi round (giảm I/O 50%)
+            # Lưu checkpoint sau mỗi round (180 files + latest)
+            checkpoint_name = f'checkpoint_task{task_id}_round{n_round}.pth'
             checkpoint_data = {
                 'task_id': task_id,
                 'n_round': n_round,
@@ -380,8 +376,11 @@ def main(args):
                 'fixed_FC_dict': fixed_FC_dict,
                 'fixed_FC_dict2': fixed_FC_dict2,
             }
+            # Lưu file đặt tên theo task/round để giữ đủ lịch sử 180 checkpoint
+            save_checkpoint(checkpoint_data, False, args.output_dir, filename=checkpoint_name)
+            # Lưu file latest để dễ dàng resume
             save_checkpoint(checkpoint_data, False, args.output_dir, filename='checkpoint_latest.pth')
-            print(f"[Round {n_round+1}/{args.rounds_per_task}] checkpoint_latest.pth saved")
+            print(f"Checkpoints saved: {checkpoint_name} and checkpoint_latest.pth")
 
         # End of Task logic
         FedDistribute(server_model, models_list, args.distributed)
@@ -415,8 +414,6 @@ if __name__ == '__main__':
     parser.add_argument('--resume', default='', type=str, help='Đường dẫn checkpoint để TIẾP TỤC huấn luyện')
     parser.add_argument('--test_ckpt', default='', type=str, help='Đường dẫn checkpoint để CHỈ KIỂM THỬ một file')
     parser.add_argument('--test_all', action='store_true', help='Kiểm thử TOÀN BỘ checkpoints trong thư mục output')
-    # Tối ưu tốc độ
-    parser.add_argument('--local_clients_override', default=None, type=int, help='[OPT] Ghi đè số clients tham gia mỗi round. VD: 5 thay vì 10')
     parser.add_argument('--use_amp', action='store_true', help='[OPT] Dùng Mixed Precision (AMP) để tăng tốc GPU')
 
     # Parse known args to find the config name
