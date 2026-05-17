@@ -174,7 +174,7 @@ def main(args):
     if args.resume:
         if os.path.isfile(args.resume):
             print(f"=> RESUME: Loading checkpoint '{args.resume}'")
-            checkpoint = torch.load(args.resume, map_location='cpu')
+            checkpoint = torch.load(args.resume, map_location='cpu', weights_only=False)
             server_model_without_ddp.load_state_dict(checkpoint['state_dict'])
             server_optimizer.load_state_dict(checkpoint['optimizer'])
             start_task = checkpoint['task_id']
@@ -198,7 +198,7 @@ def main(args):
     if args.test_ckpt:
         if os.path.isfile(args.test_ckpt):
             print(f"=> TEST: Loading checkpoint '{args.test_ckpt}'")
-            checkpoint = torch.load(args.test_ckpt, map_location='cpu')
+            checkpoint = torch.load(args.test_ckpt, map_location='cpu', weights_only=False)
             server_model_without_ddp.load_state_dict(checkpoint['state_dict'])
             
             curr_task = checkpoint['task_id']
@@ -243,7 +243,7 @@ def main(args):
             print(f" TESTING CHECKPOINT: {ckpt_name}")
             print(f"{'#'*30}")
             
-            checkpoint = torch.load(ckpt_path, map_location='cpu')
+            checkpoint = torch.load(ckpt_path, map_location='cpu', weights_only=False)
             server_model_without_ddp.load_state_dict(checkpoint['state_dict'])
             curr_task = checkpoint['task_id']
             args.current_round = checkpoint['n_round'] + 1 # Để engine ghi log đúng round
