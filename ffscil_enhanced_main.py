@@ -189,6 +189,24 @@ def main(args):
                 start_round = 0
                 start_task += 1
             
+            # [FIX] Khôi phục global_prototype và global_prototype_var cho task hiện tại
+            if start_round > 0 and all_global_prototype:
+                if start_task > 0:
+                    min_c = args.base_classes + ((start_task - 1) * args.fs_classes)
+                    max_c = args.base_classes + ((start_task) * args.fs_classes)
+                else:
+                    min_c = 0
+                    max_c = args.base_classes
+                
+                global_prototype = {k: v for k, v in all_global_prototype.items() if min_c <= k < max_c}
+                global_prototype_var = {k: v for k, v in all_global_prototype_var.items() if min_c <= k < max_c}
+                
+                if not global_prototype:
+                    global_prototype = None
+                    global_prototype_var = None
+                else:
+                    print(f"=> RESUME: Reconstructed global_prototype for Task {start_task} (classes {list(global_prototype.keys())})")
+            
             FedDistribute(server_model, models_list, args.distributed)
             print(f"=> RESUME: Success. Starting from Task {start_task}, Round {start_round}")
         else:
