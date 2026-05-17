@@ -375,14 +375,6 @@ def main(args):
             save_checkpoint(checkpoint_data, False, args.output_dir, filename='checkpoint_latest.pth')
             print(f"Checkpoints saved: {checkpoint_name} and checkpoint_latest.pth")
 
-            # === ĐÁNH GIÁ CHI TIẾT SAU MỖI ROUND ===
-            print(f"\n[ROUND EVAL] Đang đánh giá Round {n_round+1} của Task {task_id+1}...")
-            args.current_round = n_round + 1 # Lưu vào args để engine truy cập
-            evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
-                                criterion, data_loaders[0], server_optimizer, None,
-                                device, None, task_id, test_sizes, 
-                                all_global_prototype, all_global_prototype_var, args)
-
         # End of Task logic
         FedDistribute(server_model, models_list, args.distributed)
         if task_id == 0:
@@ -393,6 +385,9 @@ def main(args):
             server_model.head.load_state_dict(fixed_FC_dict)
             server_model_without_ddp.head.load_state_dict(fixed_FC_dict2)
 
+        # Đánh giá cuối mỗi Task (6 lần tổng, thay vì 180 lần như trước)
+        args.current_round = args.rounds_per_task  # Đánh dấu cuối task trong log
+        print(f"\n[TASK EVAL] Đánh giá sau khi hoàn thành Task {task_id+1}/{args.num_tasks}...")
         evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
                             criterion, data_loaders[0], server_optimizer, None,
                             device, None, task_id, test_sizes, 
