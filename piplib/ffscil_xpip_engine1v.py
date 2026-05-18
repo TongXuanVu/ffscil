@@ -696,7 +696,7 @@ def train_fs_one_epoch_with_available_classes(model: torch.nn.Module, original_m
                 query_proto_kshot = torch.cat(query_proto_kshot,dim=0)
 
 
-        logit_query, opt_proto = model.forward_fs(input,  target1, query_proto_kshot, query_label_kshot, args.available_fs_classes, args.fs_shots, task_id, cls_features, True)
+        output_fs, logit_query, opt_proto = model.forward_fs(input,  target1, query_proto_kshot, query_label_kshot, args.available_fs_classes, args.fs_shots, task_id, cls_features, True)
         print(logit_query.shape)
         print(opt_proto.shape)
 

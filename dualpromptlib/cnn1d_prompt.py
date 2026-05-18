@@ -35,6 +35,29 @@ class CNN1D_Prompt(nn.Module):
         # Không cần chuyển đổi head cho CNN1D Prompt (sử dụng forward_with_proto)
         pass
         
+    def forward_fs(self, x, target, query_proto, query_label, available_fs_classes, fs_shots, task_id, cls_features=None, train=False):
+        # 1. Gọi forward thông thường để lấy pre_logits
+        output = self.forward(x, task_id, cls_features, train)
+        
+        # 2. Tạo logit_query giả với kích thước [batch_size, available_fs_classes]
+        batch_size = x.shape[0]
+        logit_query = torch.zeros(batch_size, available_fs_classes, device=x.device)
+        
+        # 3. Lấy opt_proto từ query_proto (là các prototypes đại diện cho các lớp few-shot)
+        # Kích thước query_proto là [available_fs_classes * fs_shots, embed_dim]
+        # Chúng ta lấy trung bình qua các shots để có [available_fs_classes, embed_dim]
+        embed_dim = self.embed_dim
+        if query_proto is not None:
+            try:
+                opt_proto = query_proto.view(fs_shots, available_fs_classes, embed_dim).mean(dim=0)
+            except Exception:
+                # Fallback nếu reshape lỗi
+                opt_proto = query_proto[:available_fs_classes]
+        else:
+            opt_proto = torch.zeros(available_fs_classes, embed_dim, device=x.device)
+            
+        return output, logit_query, opt_proto
+        
     def forward_features(self, x, task_id=-1, cls_features=None, train=False):
         if x.dim() == 2:
             x = x.unsqueeze(1)
