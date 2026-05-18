@@ -28,6 +28,13 @@ class CNN1D_Prompt(nn.Module):
         # FC Head
         self.head = nn.Linear(embed_dim, num_classes)
         
+        # [FIX] Khai báo để tương thích với Few-Shot engine của FFSCIL
+        self.entered_fs_task = False
+
+    def init_fs_head(self, available_fs_classes):
+        # Không cần chuyển đổi head cho CNN1D Prompt (sử dụng forward_with_proto)
+        pass
+        
     def forward_features(self, x, task_id=-1, cls_features=None, train=False):
         if x.dim() == 2:
             x = x.unsqueeze(1)
