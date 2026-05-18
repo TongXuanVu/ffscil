@@ -881,58 +881,25 @@ def train_fs_one_epoch_with_available_classes_v2(model: torch.nn.Module, origina
                     all_proto[k] = torch.tensor(np.array(all_global_prototype[k]), dtype=input.dtype).to(device, non_blocking=True)
 
 
-        if(global_prototype is None):
-            query_proto = model.forward_get_prelogits(input, task_id, cls_features, train=True)
-            query_label = target1
-        else:
-            if(iter == 0):
-                query_proto = proto
-                query_label = proto_label
-                if(len(unava_proto_label) > 0):
-                    for c in unava_proto_label:
-                        proto_c = torch.mean(cls_features[target==c],dim=0).unsqueeze(0)
-                        # print(proto_c.shape)
-                        query_proto = torch.cat((query_proto,proto_c),dim=0)
-                        query_label = torch.cat((query_label,torch.tensor([c]).cuda()))
-
-                query_proto_kshot = []
-                query_label_kshot = []
-                # for i in range(args.fs_shots):
-                for i in range(fs_shots):
-                    query_proto_kshot.append(query_proto)
-                    query_label_kshot.append(query_label)
-
-                query_label_kshot = torch.cat(query_label_kshot,dim=0)
-                query_proto_kshot = torch.cat(query_proto_kshot,dim=0)
-
-        # print(query_proto_kshot.shape)
-        # print(query_label_kshot.shape)
-        # print(input.shape)
-        # print(target1.shape)
-        # print(query_label_kshot)
-        # print(target1)
-        # print(target)
-
-
-        # output, logit_query, opt_proto = model.forward_fs(input,  target1, query_proto_kshot, query_label_kshot, args.available_fs_classes, args.fs_shots, task_id, cls_features, True)
-        output, logit_query, opt_proto = model.forward_fs(input,  target1, query_proto_kshot, query_label_kshot, args.available_fs_classes, fs_shots, task_id, cls_features, True)
-        pre_logits = output['pre_logits']
-        # print(pre_logits.shape)
-        # print(logit_query.shape)
-        # print(opt_proto.shape)
-
-        for k in range(opt_proto.shape[0]):
-            optimal_proto[label_reverser[k]] = opt_proto[k]
-
-        logits = None
-        isFirst = True
-        for j in range(0,pre_logits.shape[0]):
-            logit = classify_with_proto(pre_logits[j], all_proto, int(max(target).item())+1)
-            if isFirst:
-                logits = logit
-                isFirst= False
+        # [OPT] Vectorized fast cosine similarity classification (No python loop on batch size!)
+        max_label_val = int(max(target).item()) + 1
+        all_proto_keys = list(all_proto.keys())
+        all_proto_list = []
+        for i in range(max_label_val):
+            if i in all_proto_keys:
+                proto = all_proto[i]
             else:
-                logits=torch.cat((logits,logit), dim=0)
+                if len(all_proto_keys) > 1:
+                    idx = random.sample(all_proto_keys, 2)
+                else:
+                    idx = all_proto_keys * 2
+                proto = (all_proto[idx[0]] + all_proto[idx[1]]) * 0.5
+            all_proto_list.append(proto)
+        
+        prototypes_tensor = torch.stack(all_proto_list).to(device)  # [C, D]
+        data_norm = torch.nn.functional.normalize(pre_logits, p=2, dim=-1)     # [B, D]
+        proto_norm = torch.nn.functional.normalize(prototypes_tensor, p=2, dim=-1) # [C, D]
+        logits = torch.matmul(data_norm, proto_norm.t()) * 10       # [B, C]
 
 
         print(logits.shape)
@@ -1743,17 +1710,24 @@ def evaluate3(model: torch.nn.Module, original_model: torch.nn.Module, data_load
                 for k in all_global_prototype.keys():
                     all_proto[k] = torch.tensor(np.array(all_global_prototype[k]), dtype=input.dtype).to(device, non_blocking=True)
 
-                logits = None
-                isFirst = True
-                for j in range(0,pre_logists.shape[0]):
-                    # logit = classify(pre_logists[j], all_proto)
-                    # logit = classify_with_proto(pre_logists[j], all_proto)
-                    logit = classify_with_proto(pre_logists[j], all_proto, max_label)
-                    if isFirst:
-                        logits = logit
-                        isFirst= False
+                # [OPT] Vectorized fast cosine similarity classification (No python loop on batch size!)
+                all_proto_keys = list(all_proto.keys())
+                all_proto_list = []
+                for i in range(max_label):
+                    if i in all_proto_keys:
+                        proto = all_proto[i]
                     else:
-                        logits=torch.cat((logits,logit), dim=0)
+                        if len(all_proto_keys) > 1:
+                            idx = random.sample(all_proto_keys, 2)
+                        else:
+                            idx = all_proto_keys * 2
+                        proto = (all_proto[idx[0]] + all_proto[idx[1]]) * 0.5
+                    all_proto_list.append(proto)
+                
+                prototypes_tensor = torch.stack(all_proto_list).to(device)  # [C, D]
+                data_norm = torch.nn.functional.normalize(pre_logists, p=2, dim=-1)     # [B, D]
+                proto_norm = torch.nn.functional.normalize(prototypes_tensor, p=2, dim=-1) # [C, D]
+                logits = torch.matmul(data_norm, proto_norm.t()) * 10       # [B, C]
             #     print("Finish 1 batch testing")
 
 
@@ -1850,19 +1824,26 @@ def evaluate3a(model: torch.nn.Module, original_model: torch.nn.Module, data_loa
                 logits = output['logits']
             else:
                 print("Classification with Prototoype")
-                logits = None
-                isFirst = True
                 pre_logits = model.forward_head_prelogits(res)['pre_logits']
-
-                for j in range(0,pre_logits.shape[0]):
-                    # logit = classify(pre_logists[j], all_proto)
-                    # logit = classify_with_proto(pre_logists[j], all_proto)
-                    logit = classify_with_proto(pre_logits[j], all_proto, max_label)
-                    if isFirst:
-                        logits = logit
-                        isFirst= False
+                
+                # [OPT] Vectorized fast cosine similarity classification (No python loop on batch size!)
+                all_proto_keys = list(all_proto.keys())
+                all_proto_list = []
+                for i in range(max_label):
+                    if i in all_proto_keys:
+                        proto = all_proto[i]
                     else:
-                        logits=torch.cat((logits,logit), dim=0)
+                        if len(all_proto_keys) > 1:
+                            idx = random.sample(all_proto_keys, 2)
+                        else:
+                            idx = all_proto_keys * 2
+                        proto = (all_proto[idx[0]] + all_proto[idx[1]]) * 0.5
+                    all_proto_list.append(proto)
+                
+                prototypes_tensor = torch.stack(all_proto_list).to(device)  # [C, D]
+                data_norm = torch.nn.functional.normalize(pre_logits, p=2, dim=-1)     # [B, D]
+                proto_norm = torch.nn.functional.normalize(prototypes_tensor, p=2, dim=-1) # [C, D]
+                logits = torch.matmul(data_norm, proto_norm.t()) * 10       # [B, C]
 
 
 
@@ -1977,17 +1958,26 @@ def evaluate3b(model: torch.nn.Module, original_model: torch.nn.Module, data_loa
             output = model.forward_head(res)
             logits = output['logits'][:,0:max_label]
 
-            logits2 = None
-            isFirst = True
             pre_logits = model.forward_head_prelogits(res)['pre_logits']
-
-            for j in range(0,pre_logits.shape[0]):
-                logit = classify_with_proto(pre_logits[j], all_proto, max_label)
-                if isFirst:
-                    logits2 = logit
-                    isFirst= False
+            
+            # [OPT] Vectorized fast cosine similarity classification (No python loop on batch size!)
+            all_proto_keys = list(all_proto.keys())
+            all_proto_list = []
+            for i in range(max_label):
+                if i in all_proto_keys:
+                    proto = all_proto[i]
                 else:
-                    logits2=torch.cat((logits2,logit), dim=0)
+                    if len(all_proto_keys) > 1:
+                        idx = random.sample(all_proto_keys, 2)
+                    else:
+                        idx = all_proto_keys * 2
+                    proto = (all_proto[idx[0]] + all_proto[idx[1]]) * 0.5
+                all_proto_list.append(proto)
+            
+            prototypes_tensor = torch.stack(all_proto_list).to(device)  # [C, D]
+            data_norm = torch.nn.functional.normalize(pre_logits, p=2, dim=-1)     # [B, D]
+            proto_norm = torch.nn.functional.normalize(prototypes_tensor, p=2, dim=-1) # [C, D]
+            logits2 = torch.matmul(data_norm, proto_norm.t()) * 10       # [B, C]
 
             logits=torch.nn.functional.softmax(logits, dim=1)
             logits2=torch.nn.functional.softmax(logits2, dim=1)
