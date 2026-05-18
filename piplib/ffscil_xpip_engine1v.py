@@ -882,6 +882,7 @@ def train_fs_one_epoch_with_available_classes_v2(model: torch.nn.Module, origina
 
 
         # [OPT] Vectorized fast cosine similarity classification (No python loop on batch size!)
+        pre_logits = model.forward_get_prelogits(input, task_id=task_id, cls_features=cls_features, train=True)
         max_label_val = int(max(target).item()) + 1
         all_proto_keys = list(all_proto.keys())
         all_proto_list = []
