@@ -237,9 +237,10 @@ def main(args):
 
     # 3. Logic TEST_ALL (Tự động kiểm thử toàn bộ 180 checkpoint)
     if args.test_all:
-        print(f"=> TEST_ALL: Quét thư mục '{args.output_dir}' để tìm checkpoints...")
+        scan_dir = args.test_dir if args.test_dir else args.output_dir
+        print(f"=> TEST_ALL: Quét thư mục '{scan_dir}' để tìm checkpoints...")
         import re
-        ckpt_files = [f for f in os.listdir(args.output_dir) if f.startswith('checkpoint_task') and f.endswith('.pth')]
+        ckpt_files = [f for f in os.listdir(scan_dir) if f.startswith('checkpoint_task') and f.endswith('.pth')]
         
         # Hàm để lấy task_id và round_id từ tên file để sắp xếp
         def sort_key(filename):
@@ -256,7 +257,7 @@ def main(args):
         data_loaders[0] = data_loaders_eval[0]
 
         for ckpt_name in ckpt_files:
-            ckpt_path = os.path.join(args.output_dir, ckpt_name)
+            ckpt_path = os.path.join(scan_dir, ckpt_name)
             print(f"\n{'#'*30}")
             print(f" TESTING CHECKPOINT: {ckpt_name}")
             print(f"{'#'*30}")
@@ -267,13 +268,50 @@ def main(args):
             args.current_round = checkpoint['n_round'] + 1 # Để engine ghi log đúng round
 
             # Đánh giá trên tất cả các task đã học tính đến checkpoint này
-            evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
+            stats = evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
                                 criterion, data_loaders[0], server_optimizer, None,
                                 device, None, curr_task, test_sizes, 
                                 checkpoint.get('all_global_prototype', {}), 
                                 checkpoint.get('all_global_prototype_var', {}), args)
-        
+            
+            if stats is not None:
+                avg_stat, base_classes_stat, novel_classes_stat, twavg_stat = stats
+                csv_path = os.path.join(args.output_dir, 'test_all_metrics.csv')
+                
+                # Create file and write header if it doesn't exist
+                if not os.path.exists(csv_path):
+                    with open(csv_path, 'w', encoding='utf-8') as f:
+                        f.write("Task,Round,Acc1,Acc5,Loss,Base_Acc1,Novel_Acc1,TWAvg_Acc1\n")
+                
+                # Append metrics
+                with open(csv_path, 'a', encoding='utf-8') as f:
+                    f.write(f"{curr_task},{args.current_round},{avg_stat[0]},{avg_stat[1]},{avg_stat[2]},{base_classes_stat[0]},{novel_classes_stat[0]},{twavg_stat[0]}\n")
+
         print("\n=> TEST_ALL: Hoàn tất kiểm thử toàn bộ checkpoints.")
+        print(f"=> TEST_ALL: Đã lưu metrics vào: {os.path.join(args.output_dir, 'test_all_metrics.csv')}")
+
+        # Plot confusion matrix for the very last round
+        try:
+            import matplotlib.pyplot.subplots
+            import seaborn as sns
+            import matplotlib.pyplot as plt
+            import json
+            last_cm_path = os.path.join(args.output_dir, 'confusion_matrices', f'cm_task{curr_task+1}_round{args.current_round}.json')
+            if os.path.exists(last_cm_path):
+                print(f"=> TEST_ALL: Vẽ biểu đồ Confusion Matrix từ round cuối ({last_cm_path})...")
+                with open(last_cm_path, 'r') as f:
+                    cm_data = json.load(f)
+                plt.figure(figsize=(10, 8))
+                sns.heatmap(cm_data, annot=True, fmt='d', cmap='Blues')
+                plt.title(f'Confusion Matrix (Task {curr_task+1}, Round {args.current_round})')
+                plt.ylabel('True Label')
+                plt.xlabel('Predicted Label')
+                cm_plot_path = os.path.join(args.output_dir, 'final_confusion_matrix.png')
+                plt.savefig(cm_plot_path, dpi=300, bbox_inches='tight')
+                plt.close()
+                print(f"=> TEST_ALL: Đã lưu hình ảnh Confusion Matrix tại: {cm_plot_path}")
+        except Exception as e:
+            print(f"=> Lỗi vẽ Confusion Matrix: {e}")
         return
 
     # Training Loop
@@ -431,7 +469,8 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir', default='./output_iot_cnn1d/', type=str)
     parser.add_argument('--resume', default='', type=str, help='Đường dẫn checkpoint để TIẾP TỤC huấn luyện')
     parser.add_argument('--test_ckpt', default='', type=str, help='Đường dẫn checkpoint để CHỈ KIỂM THỬ một file')
-    parser.add_argument('--test_all', action='store_true', help='Kiểm thử TOÀN BỘ checkpoints trong thư mục output')
+    parser.add_argument('--test_all', action='store_true', help='Kiểm thử TOÀN BỘ checkpoints')
+    parser.add_argument('--test_dir', default='', type=str, help='Thư mục chứa checkpoints để kiểm thử (mặc định lấy từ output_dir)')
     parser.add_argument('--use_amp', action='store_true', help='[OPT] Dùng Mixed Precision (AMP) để tăng tốc GPU')
 
     # Parse known args to find the config name
