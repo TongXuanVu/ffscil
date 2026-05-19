@@ -292,7 +292,6 @@ def main(args):
 
         # Plot confusion matrix for the very last round
         try:
-            import matplotlib.pyplot.subplots
             import seaborn as sns
             import matplotlib.pyplot as plt
             import json
