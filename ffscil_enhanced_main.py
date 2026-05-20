@@ -41,7 +41,7 @@ def main(args):
 
     # [OPT] AMP scaler cho Mixed Precision Training
     use_amp = getattr(args, 'use_amp', False) and torch.cuda.is_available()
-    scaler = torch.cuda.amp.GradScaler() if use_amp else None
+    scaler = torch.amp.GradScaler('cuda') if use_amp else None
     if use_amp:
         print("[OPT] AMP (Mixed Precision) ENABLED")
     args._amp_scaler = scaler  # Đưa scaler vào args để engine sử dụng
