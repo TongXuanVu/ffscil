@@ -41,7 +41,7 @@ def main(args):
 
     # [OPT] AMP scaler cho Mixed Precision Training
     use_amp = getattr(args, 'use_amp', False) and torch.cuda.is_available()
-    scaler = torch.amp.GradScaler('cuda') if use_amp else None
+    scaler = torch.cuda.amp.GradScaler() if use_amp else None
     if use_amp:
         print("[OPT] AMP (Mixed Precision) ENABLED")
     args._amp_scaler = scaler  # Đưa scaler vào args để engine sử dụng
@@ -250,7 +250,19 @@ def main(args):
             return (999, 999)
 
         ckpt_files.sort(key=sort_key)
-        print(f"=> TEST_ALL: Tìm thấy {len(ckpt_files)} checkpoints. Bắt đầu kiểm thử...")
+        
+        # Lọc để tiếp tục test từ checkpoint bị ngắt quãng
+        start_t = getattr(args, 'test_start_task', 0)
+        start_r = getattr(args, 'test_start_round', 0)
+        
+        filtered_ckpt = []
+        for ckpt in ckpt_files:
+            t, r = sort_key(ckpt)
+            if t > start_t or (t == start_t and r >= start_r):
+                filtered_ckpt.append(ckpt)
+        ckpt_files = filtered_ckpt
+        
+        print(f"=> TEST_ALL: Tìm thấy {len(ckpt_files)} checkpoints cần test (Bắt đầu từ Task {start_t} Round {start_r})...")
 
         # Nạp sẵn toàn bộ dataloaders cho client 0 (Max task) để dùng chung cho nhanh
         data_loaders_eval, _ = build_continual_dataloader(args, client_id=0, specific_task=args.num_tasks - 1)
@@ -470,6 +482,8 @@ if __name__ == '__main__':
     parser.add_argument('--test_ckpt', default='', type=str, help='Đường dẫn checkpoint để CHỈ KIỂM THỬ một file')
     parser.add_argument('--test_all', action='store_true', help='Kiểm thử TOÀN BỘ checkpoints')
     parser.add_argument('--test_dir', default='', type=str, help='Thư mục chứa checkpoints để kiểm thử (mặc định lấy từ output_dir)')
+    parser.add_argument('--test_start_task', default=0, type=int, help='Task ID để tiếp tục kiểm thử (0-indexed)')
+    parser.add_argument('--test_start_round', default=0, type=int, help='Round ID để tiếp tục kiểm thử (0-indexed)')
     parser.add_argument('--use_amp', action='store_true', help='[OPT] Dùng Mixed Precision (AMP) để tăng tốc GPU')
 
     # Parse known args to find the config name
