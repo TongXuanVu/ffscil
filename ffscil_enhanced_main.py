@@ -445,9 +445,16 @@ def main(args):
             }
             # Lưu file đặt tên theo task/round để giữ đủ lịch sử 180 checkpoint
             save_checkpoint(checkpoint_data, False, args.output_dir, filename=checkpoint_name)
-            # Lưu file latest để dễ dàng resume
             save_checkpoint(checkpoint_data, False, args.output_dir, filename='checkpoint_latest.pth')
             print(f"Checkpoints saved: {checkpoint_name} and checkpoint_latest.pth")
+
+            # [EVAL] Đánh giá ngay sau mỗi round
+            args.current_round = n_round + 1
+            print(f"\n[ROUND EVAL] Đánh giá sau Round {n_round+1} của Task {task_id+1}...")
+            evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
+                                criterion, data_loaders[0], server_optimizer, None,
+                                device, None, task_id, test_sizes, 
+                                all_global_prototype, all_global_prototype_var, args)
 
         # End of Task logic
         FedDistribute(server_model, models_list, args.distributed)
@@ -464,13 +471,6 @@ def main(args):
         save_checkpoint(checkpoint_data, False, args.output_dir, filename=task_ckpt_name)
         print(f"[TASK {task_id+1}] Task checkpoint saved: {task_ckpt_name}")
 
-        # Đánh giá cuối mỗi Task (6 lần tổng)
-        args.current_round = args.rounds_per_task
-        print(f"\n[TASK EVAL] Đánh giá sau khi hoàn thành Task {task_id+1}/{args.num_tasks}...")
-        evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
-                            criterion, data_loaders[0], server_optimizer, None,
-                            device, None, task_id, test_sizes, 
-                            all_global_prototype, all_global_prototype_var, args)
 
     total_time = time.time() - start_time
     print(f"Total training time: {str(datetime.timedelta(seconds=int(total_time)))}")
