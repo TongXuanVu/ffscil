@@ -4,26 +4,16 @@ import os
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 import dualpromptlib.utils as utils
 
-def find_file(base_path, target_file):
-    for root, dirs, files in os.walk(base_path):
-        if target_file in files:
-            return os.path.join(root, target_file)
-    return None
-
-def find_dir(base_path, target_dir):
-    for root, dirs, files in os.walk(base_path):
-        if target_dir in dirs:
-            return os.path.join(root, target_dir)
-    return None
-
 class CICIoT23PTDataset(Dataset):
     _global_test_cache = None  # Cache để tránh load file 1.9GB nhiều lần
 
     def __init__(self, data_path, client_id, task_id, is_train=True):
         if is_train:
-            base_dir = find_dir(data_path, "federated_data_fewshot")
-            if base_dir is None:
-                raise FileNotFoundError(f"Cannot find 'federated_data_fewshot' directory anywhere inside {data_path}")
+            # Check if Kaggle 'fewshot' intermediate folder exists
+            if os.path.exists(os.path.join(data_path, "fewshot", "federated_data_fewshot")):
+                base_dir = os.path.join(data_path, "fewshot", "federated_data_fewshot")
+            else:
+                base_dir = os.path.join(data_path, "federated_data_fewshot")
                 
             file_path = os.path.join(base_dir, f"client_{client_id}_task_{task_id}.pt")
             if os.path.exists(file_path):
@@ -35,9 +25,10 @@ class CICIoT23PTDataset(Dataset):
                 self.y = torch.empty(0, dtype=torch.long)
         else:
             # Dùng global_test_data.pt và lọc nhãn thuộc về task_id
-            test_file = find_file(data_path, "global_test_data.pt")
-            if test_file is None:
-                raise FileNotFoundError(f"Cannot find 'global_test_data.pt' anywhere inside {data_path}")
+            test_file = os.path.join(data_path, "global_test_data.pt")
+            if not os.path.exists(test_file):
+                test_file = os.path.join(data_path, "data", "global_test_data.pt")
+
             
             if CICIoT23PTDataset._global_test_cache is None:
                 print(f"Loading global test data from {test_file}...")
@@ -46,12 +37,12 @@ class CICIoT23PTDataset(Dataset):
             all_x = CICIoT23PTDataset._global_test_cache['x']
             all_y = CICIoT23PTDataset._global_test_cache['y'].long()
             
-            central_base = find_dir(data_path, "centralized_data_fewshot")
-            if central_base is not None:
-                central_path = os.path.join(central_base, f"centralized_task_{task_id}.pt")
+            if os.path.exists(os.path.join(data_path, "fewshot", "centralized_data_fewshot")):
+                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
             else:
-                central_path = "NOT_FOUND"
+                central_base = os.path.join(data_path, "centralized_data_fewshot")
                 
+            central_path = os.path.join(central_base, f"centralized_task_{task_id}.pt")
             if os.path.exists(central_path):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
                 task_labels = torch.unique(central_data['y'])
@@ -116,12 +107,12 @@ def build_continual_dataloader(args, client_id=0, specific_task=None):
             class_mask.append(torch.unique(val_ds.y).tolist())
         else:
             # Fallback to centralized data to get labels if test set is empty
-            central_base = find_dir(data_path, "centralized_data_fewshot")
-            if central_base is not None:
-                central_path = os.path.join(central_base, f"centralized_task_{t}.pt")
+            if os.path.exists(os.path.join(data_path, "fewshot", "centralized_data_fewshot")):
+                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
             else:
-                central_path = "NOT_FOUND"
+                central_base = os.path.join(data_path, "centralized_data_fewshot")
                 
+            central_path = os.path.join(central_base, f"centralized_task_{t}.pt")
             if os.path.exists(central_path):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
                 class_mask.append(torch.unique(central_data['y']).tolist())
