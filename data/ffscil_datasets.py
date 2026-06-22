@@ -9,8 +9,13 @@ class CICIoT23PTDataset(Dataset):
 
     def __init__(self, data_path, client_id, task_id, is_train=True):
         if is_train:
-            # federated_data/client_X_task_Y.pt
-            file_path = os.path.join(data_path, "federated_data", f"client_{client_id}_task_{task_id}.pt")
+            # Check if Kaggle 'fewshot' intermediate folder exists
+            if os.path.exists(os.path.join(data_path, "fewshot", "federated_data_fewshot")):
+                base_dir = os.path.join(data_path, "fewshot", "federated_data_fewshot")
+            else:
+                base_dir = os.path.join(data_path, "federated_data_fewshot")
+                
+            file_path = os.path.join(base_dir, f"client_{client_id}_task_{task_id}.pt")
             if os.path.exists(file_path):
                 data = torch.load(file_path, map_location='cpu', weights_only=False)
                 self.x = data['x']
@@ -29,7 +34,12 @@ class CICIoT23PTDataset(Dataset):
             all_x = CICIoT23PTDataset._global_test_cache['x']
             all_y = CICIoT23PTDataset._global_test_cache['y'].long()
             
-            central_path = os.path.join(data_path, "centralized_data", f"centralized_task_{task_id}.pt")
+            if os.path.exists(os.path.join(data_path, "fewshot", "centralized_data_fewshot")):
+                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
+            else:
+                central_base = os.path.join(data_path, "centralized_data_fewshot")
+                
+            central_path = os.path.join(central_base, f"centralized_task_{task_id}.pt")
             if os.path.exists(central_path):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
                 task_labels = torch.unique(central_data['y'])
@@ -94,7 +104,12 @@ def build_continual_dataloader(args, client_id=0, specific_task=None):
             class_mask.append(torch.unique(val_ds.y).tolist())
         else:
             # Fallback to centralized data to get labels if test set is empty
-            central_path = os.path.join(data_path, "centralized_data", f"centralized_task_{t}.pt")
+            if os.path.exists(os.path.join(data_path, "fewshot", "centralized_data_fewshot")):
+                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
+            else:
+                central_base = os.path.join(data_path, "centralized_data_fewshot")
+                
+            central_path = os.path.join(central_base, f"centralized_task_{t}.pt")
             if os.path.exists(central_path):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
                 class_mask.append(torch.unique(central_data['y']).tolist())
