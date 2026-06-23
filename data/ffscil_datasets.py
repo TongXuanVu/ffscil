@@ -9,11 +9,18 @@ class CICIoT23PTDataset(Dataset):
 
     def __init__(self, data_path, client_id, task_id, is_train=True):
         if is_train:
-            # Check if Kaggle 'fewshot' intermediate folder exists
-            if os.path.exists(os.path.join(data_path, "fewshot", "federated_data_fewshot")):
-                base_dir = os.path.join(data_path, "fewshot", "federated_data_fewshot")
+            # Task 1 (Base Task): Lấy 100% data từ thư mục data/federated_data
+            if task_id == 1:
+                base_dir = os.path.join(data_path, "data", "federated_data")
+                # Fallback cho local (nếu không có thư mục data)
+                if not os.path.exists(base_dir):
+                    base_dir = os.path.join(data_path, "federated_data")
+            # Task > 1 (Novel Tasks): Lấy data fewshot từ thư mục fewshot/federated_data_fewshot
             else:
-                base_dir = os.path.join(data_path, "federated_data_fewshot")
+                base_dir = os.path.join(data_path, "fewshot", "federated_data_fewshot")
+                # Fallback cho local
+                if not os.path.exists(base_dir):
+                    base_dir = os.path.join(data_path, "federated_data_fewshot")
                 
             file_path = os.path.join(base_dir, f"client_{client_id}_task_{task_id}.pt")
             if os.path.exists(file_path):
@@ -37,10 +44,14 @@ class CICIoT23PTDataset(Dataset):
             all_x = CICIoT23PTDataset._global_test_cache['x']
             all_y = CICIoT23PTDataset._global_test_cache['y'].long()
             
-            if os.path.exists(os.path.join(data_path, "fewshot", "centralized_data_fewshot")):
-                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
+            if task_id == 1:
+                central_base = os.path.join(data_path, "data", "centralized_data")
+                if not os.path.exists(central_base):
+                    central_base = os.path.join(data_path, "centralized_data")
             else:
-                central_base = os.path.join(data_path, "centralized_data_fewshot")
+                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
+                if not os.path.exists(central_base):
+                    central_base = os.path.join(data_path, "centralized_data_fewshot")
                 
             central_path = os.path.join(central_base, f"centralized_task_{task_id}.pt")
             if os.path.exists(central_path):
@@ -107,10 +118,14 @@ def build_continual_dataloader(args, client_id=0, specific_task=None):
             class_mask.append(torch.unique(val_ds.y).tolist())
         else:
             # Fallback to centralized data to get labels if test set is empty
-            if os.path.exists(os.path.join(data_path, "fewshot", "centralized_data_fewshot")):
-                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
+            if t == 1:
+                central_base = os.path.join(data_path, "data", "centralized_data")
+                if not os.path.exists(central_base):
+                    central_base = os.path.join(data_path, "centralized_data")
             else:
-                central_base = os.path.join(data_path, "centralized_data_fewshot")
+                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
+                if not os.path.exists(central_base):
+                    central_base = os.path.join(data_path, "centralized_data_fewshot")
                 
             central_path = os.path.join(central_base, f"centralized_task_{t}.pt")
             if os.path.exists(central_path):
