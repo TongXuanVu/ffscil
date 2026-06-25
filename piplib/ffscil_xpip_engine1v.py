@@ -1814,17 +1814,12 @@ def evaluate3a(model: torch.nn.Module, original_model: torch.nn.Module, data_loa
             res = model.forward_features(input, task_id=task_id, cls_features=cls_features,train=False)
             pred_prompt_idx =  res['prompt_idx'][:,0].tolist()
 
-            print("Check pred_prompt_idx")
-            print(pred_prompt_idx)
-
             most_frequent_idx = max(pred_prompt_idx, key=pred_prompt_idx.count) 
             if(most_frequent_idx == 0):
-                print("Classification with FC Layer")
                 output = model.forward_head(res)
                 # output = model(input, task_id=task_id, cls_features=cls_features,train=False)
                 logits = output['logits']
             else:
-                print("Classification with Prototoype")
                 pre_logits = model.forward_head_prelogits(res)['pre_logits']
                 
                 # [OPT] Vectorized fast cosine similarity classification (No python loop on batch size!)
@@ -2171,3 +2166,5 @@ def evaluate_server_global_model3(model, model_without_ddp, original_model,
         import json
         json.dump(conf_mat.tolist(), f_cm)
     print(f"Confusion Matrix saved to {cm_path}")
+    
+    return avg_stat, base_classes_stat, novel_classes_stat, twavg_stat
