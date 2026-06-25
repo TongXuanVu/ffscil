@@ -7,22 +7,13 @@ import dualpromptlib.utils as utils
 class CICIoT23PTDataset(Dataset):
     _global_test_cache = None  # Cache để tránh load file 1.9GB nhiều lần
 
-    def __init__(self, data_path, client_id, task_id, is_train=True):
+    def __init__(self, data_path, client_id, task_id, is_train=True, fs_mode='1percent'):
+        fed_dir = "federated_data_10shot" if fs_mode == '10shot' else "federated_data_fewshot"
+        cen_dir = "centralized_data_10shot" if fs_mode == '10shot' else "centralized_data_fewshot"
+
         if is_train:
-            # Task 1 (Base Task): Lấy 100% data từ thư mục data/federated_data
-            if task_id == 1:
-                base_dir = os.path.join(data_path, "data", "federated_data")
-                # Fallback cho local (nếu không có thư mục data)
-                if not os.path.exists(base_dir):
-                    base_dir = os.path.join(data_path, "federated_data")
-            # Task > 1 (Novel Tasks): Lấy data fewshot từ thư mục fewshot/federated_data_fewshot
-            else:
-                base_dir = os.path.join(data_path, "fewshot", "federated_data_fewshot")
-                # Fallback cho local
-                if not os.path.exists(base_dir):
-                    base_dir = os.path.join(data_path, "federated_data_fewshot")
-                
-            file_path = os.path.join(base_dir, f"client_{client_id}_task_{task_id}.pt")
+            # federated_data_fewshot/client_X_task_Y.pt or federated_data_10shot/...
+            file_path = os.path.join(data_path, fed_dir, f"client_{client_id}_task_{task_id}.pt")
             if os.path.exists(file_path):
                 data = torch.load(file_path, map_location='cpu', weights_only=False)
                 self.x = data['x']
@@ -33,9 +24,6 @@ class CICIoT23PTDataset(Dataset):
         else:
             # Dùng global_test_data.pt và lọc nhãn thuộc về task_id
             test_file = os.path.join(data_path, "global_test_data.pt")
-            if not os.path.exists(test_file):
-                test_file = os.path.join(data_path, "data", "global_test_data.pt")
-
             
             if CICIoT23PTDataset._global_test_cache is None:
                 print(f"Loading global test data from {test_file}...")
@@ -44,16 +32,7 @@ class CICIoT23PTDataset(Dataset):
             all_x = CICIoT23PTDataset._global_test_cache['x']
             all_y = CICIoT23PTDataset._global_test_cache['y'].long()
             
-            if task_id == 1:
-                central_base = os.path.join(data_path, "data", "centralized_data")
-                if not os.path.exists(central_base):
-                    central_base = os.path.join(data_path, "centralized_data")
-            else:
-                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
-                if not os.path.exists(central_base):
-                    central_base = os.path.join(data_path, "centralized_data_fewshot")
-                
-            central_path = os.path.join(central_base, f"centralized_task_{task_id}.pt")
+            central_path = os.path.join(data_path, cen_dir, f"centralized_task_{task_id}.pt")
             if os.path.exists(central_path):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
                 task_labels = torch.unique(central_data['y'])
@@ -94,9 +73,11 @@ def build_continual_dataloader(args, client_id=0, specific_task=None):
             class_mask.append([])
             continue
 
+        fs_mode = getattr(args, 'fs_mode', '1percent')
+
         # 1. Load Training Data (Only if it's the current task)
         if is_current_task:
-            train_ds = CICIoT23PTDataset(data_path, client_id, t, is_train=True)
+            train_ds = CICIoT23PTDataset(data_path, client_id, t, is_train=True, fs_mode=fs_mode)
             train_loader = DataLoader(
                 train_ds, batch_size=args.batch_size, 
                 shuffle=True, num_workers=args.num_workers, pin_memory=args.pin_mem
@@ -105,7 +86,7 @@ def build_continual_dataloader(args, client_id=0, specific_task=None):
             train_loader = None
 
         # 2. Load Validation Data (For current and past tasks)
-        val_ds = CICIoT23PTDataset(data_path, client_id, t, is_train=False)
+        val_ds = CICIoT23PTDataset(data_path, client_id, t, is_train=False, fs_mode=fs_mode)
         val_loader = DataLoader(
             val_ds, batch_size=args.batch_size, 
             shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_mem
@@ -118,16 +99,8 @@ def build_continual_dataloader(args, client_id=0, specific_task=None):
             class_mask.append(torch.unique(val_ds.y).tolist())
         else:
             # Fallback to centralized data to get labels if test set is empty
-            if t == 1:
-                central_base = os.path.join(data_path, "data", "centralized_data")
-                if not os.path.exists(central_base):
-                    central_base = os.path.join(data_path, "centralized_data")
-            else:
-                central_base = os.path.join(data_path, "fewshot", "centralized_data_fewshot")
-                if not os.path.exists(central_base):
-                    central_base = os.path.join(data_path, "centralized_data_fewshot")
-                
-            central_path = os.path.join(central_base, f"centralized_task_{t}.pt")
+            cen_dir = "centralized_data_10shot" if fs_mode == '10shot' else "centralized_data_fewshot"
+            central_path = os.path.join(data_path, cen_dir, f"centralized_task_{t}.pt")
             if os.path.exists(central_path):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
                 class_mask.append(torch.unique(central_data['y']).tolist())

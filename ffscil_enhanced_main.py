@@ -485,6 +485,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_start_task', default=0, type=int, help='Task ID để tiếp tục kiểm thử (0-indexed)')
     parser.add_argument('--test_start_round', default=0, type=int, help='Round ID để tiếp tục kiểm thử (0-indexed)')
     parser.add_argument('--use_amp', action='store_true', help='[OPT] Dùng Mixed Precision (AMP) để tăng tốc GPU')
+    parser.add_argument('--fs_mode', default='1percent', type=str, choices=['1percent', '10shot'], help='Chế độ few-shot data (1percent hoặc 10shot)')
 
     # Parse known args to find the config name
     known_args, remaining = parser.parse_known_args()
