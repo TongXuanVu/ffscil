@@ -53,7 +53,7 @@ def get_args_parser(subparser):
     subparser.add_argument('--data-path', default=r'C:\FederatedLearning\FL\core\data_split', type=str, help='dataset path')
     subparser.add_argument('--dataset', default='cic_iot23', type=str, help='dataset name')
     subparser.add_argument('--output_dir', default='./output_iot_real', help='path where to save, empty for no saving')
-    subparser.add_argument('--device', default='cpu', help='device to use for training / testing')
+    subparser.add_argument('--device', default='cuda', help='device to use for training / testing')
     subparser.add_argument('--num_workers', default=4, type=int)
     subparser.add_argument('--pin-mem', action='store_true', help='Pin CPU memory in DataLoader for more efficient (faster) transfer to GPU.')
     subparser.add_argument('--distributed', action='store_true', default=False, help='Enabling distributed training')
