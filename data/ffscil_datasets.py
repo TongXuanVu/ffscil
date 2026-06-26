@@ -12,8 +12,14 @@ class CICIoT23PTDataset(Dataset):
         cen_dir = "centralized_data_10shot" if fs_mode == '10shot' else "centralized_data_fewshot"
 
         if is_train:
-            # federated_data_fewshot/client_X_task_Y.pt or federated_data_10shot/...
-            file_path = os.path.join(data_path, fed_dir, f"client_{client_id}_task_{task_id}.pt")
+            # Check multiple possible paths
+            possible_paths = [
+                os.path.join(data_path, fed_dir, f"client_{client_id}_task_{task_id}.pt"),
+                os.path.join(data_path, "10shot", fed_dir, f"client_{client_id}_task_{task_id}.pt") if fs_mode == '10shot' else os.path.join(data_path, "data", fed_dir, f"client_{client_id}_task_{task_id}.pt"),
+                os.path.join(data_path, "1percent", fed_dir, f"client_{client_id}_task_{task_id}.pt")
+            ]
+            file_path = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
+            
             if os.path.exists(file_path):
                 data = torch.load(file_path, map_location='cpu', weights_only=False)
                 self.x = data['x']
@@ -23,7 +29,11 @@ class CICIoT23PTDataset(Dataset):
                 self.y = torch.empty(0, dtype=torch.long)
         else:
             # Dùng global_test_data.pt và lọc nhãn thuộc về task_id
-            test_file = os.path.join(data_path, "global_test_data.pt")
+            possible_test_paths = [
+                os.path.join(data_path, "global_test_data.pt"),
+                os.path.join(data_path, "data", "global_test_data.pt")
+            ]
+            test_file = next((p for p in possible_test_paths if os.path.exists(p)), possible_test_paths[0])
             
             if CICIoT23PTDataset._global_test_cache is None:
                 print(f"Loading global test data from {test_file}...")
@@ -32,7 +42,13 @@ class CICIoT23PTDataset(Dataset):
             all_x = CICIoT23PTDataset._global_test_cache['x']
             all_y = CICIoT23PTDataset._global_test_cache['y'].long()
             
-            central_path = os.path.join(data_path, cen_dir, f"centralized_task_{task_id}.pt")
+            possible_central_paths = [
+                os.path.join(data_path, cen_dir, f"centralized_task_{task_id}.pt"),
+                os.path.join(data_path, "10shot", cen_dir, f"centralized_task_{task_id}.pt") if fs_mode == '10shot' else os.path.join(data_path, "data", cen_dir, f"centralized_task_{task_id}.pt"),
+                os.path.join(data_path, "1percent", cen_dir, f"centralized_task_{task_id}.pt")
+            ]
+            central_path = next((p for p in possible_central_paths if os.path.exists(p)), possible_central_paths[0])
+
             if os.path.exists(central_path):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
                 task_labels = torch.unique(central_data['y'])
@@ -100,7 +116,13 @@ def build_continual_dataloader(args, client_id=0, specific_task=None):
         else:
             # Fallback to centralized data to get labels if test set is empty
             cen_dir = "centralized_data_10shot" if fs_mode == '10shot' else "centralized_data_fewshot"
-            central_path = os.path.join(data_path, cen_dir, f"centralized_task_{t}.pt")
+            possible_central_paths = [
+                os.path.join(data_path, cen_dir, f"centralized_task_{t}.pt"),
+                os.path.join(data_path, "10shot", cen_dir, f"centralized_task_{t}.pt") if fs_mode == '10shot' else os.path.join(data_path, "data", cen_dir, f"centralized_task_{t}.pt"),
+                os.path.join(data_path, "1percent", cen_dir, f"centralized_task_{t}.pt")
+            ]
+            central_path = next((p for p in possible_central_paths if os.path.exists(p)), possible_central_paths[0])
+            
             if os.path.exists(central_path):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
                 class_mask.append(torch.unique(central_data['y']).tolist())
