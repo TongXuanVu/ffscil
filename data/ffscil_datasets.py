@@ -15,8 +15,8 @@ class CICIoT23PTDataset(Dataset):
             # Check multiple possible paths
             possible_paths = [
                 os.path.join(data_path, fed_dir, f"client_{client_id}_task_{task_id}.pt"),
-                os.path.join(data_path, "10shot", fed_dir, f"client_{client_id}_task_{task_id}.pt") if fs_mode == '10shot' else os.path.join(data_path, "data", fed_dir, f"client_{client_id}_task_{task_id}.pt"),
-                os.path.join(data_path, "1percent", fed_dir, f"client_{client_id}_task_{task_id}.pt")
+                os.path.join(data_path, "10shot", fed_dir, f"client_{client_id}_task_{task_id}.pt"),
+                os.path.join(data_path, "fewshot", fed_dir, f"client_{client_id}_task_{task_id}.pt")
             ]
             file_path = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
             
@@ -44,8 +44,8 @@ class CICIoT23PTDataset(Dataset):
             
             possible_central_paths = [
                 os.path.join(data_path, cen_dir, f"centralized_task_{task_id}.pt"),
-                os.path.join(data_path, "10shot", cen_dir, f"centralized_task_{task_id}.pt") if fs_mode == '10shot' else os.path.join(data_path, "data", cen_dir, f"centralized_task_{task_id}.pt"),
-                os.path.join(data_path, "1percent", cen_dir, f"centralized_task_{task_id}.pt")
+                os.path.join(data_path, "10shot", cen_dir, f"centralized_task_{task_id}.pt"),
+                os.path.join(data_path, "fewshot", cen_dir, f"centralized_task_{task_id}.pt")
             ]
             central_path = next((p for p in possible_central_paths if os.path.exists(p)), possible_central_paths[0])
 
@@ -118,8 +118,8 @@ def build_continual_dataloader(args, client_id=0, specific_task=None):
             cen_dir = "centralized_data_10shot" if fs_mode == '10shot' else "centralized_data_fewshot"
             possible_central_paths = [
                 os.path.join(data_path, cen_dir, f"centralized_task_{t}.pt"),
-                os.path.join(data_path, "10shot", cen_dir, f"centralized_task_{t}.pt") if fs_mode == '10shot' else os.path.join(data_path, "data", cen_dir, f"centralized_task_{t}.pt"),
-                os.path.join(data_path, "1percent", cen_dir, f"centralized_task_{t}.pt")
+                os.path.join(data_path, "10shot", cen_dir, f"centralized_task_{t}.pt"),
+                os.path.join(data_path, "fewshot", cen_dir, f"centralized_task_{t}.pt")
             ]
             central_path = next((p for p in possible_central_paths if os.path.exists(p)), possible_central_paths[0])
             
