@@ -1,29 +1,100 @@
 import random
 import torch
 import os
+import json
+import glob
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 import dualpromptlib.utils as utils
+
+# Dai lop tuan tu chuan cua CIC-IoT23: task 1..6 gom 6,6,6,6,5,5 lop
+CICIOT23_TASK_CLASSES = [
+    list(range(0, 6)), list(range(6, 12)), list(range(12, 18)),
+    list(range(18, 24)), list(range(24, 29)), list(range(29, 34)),
+]
+
+# ── Remap label cho bo data 100-client ────────────────────────────────────────
+# Bo 100-client giu NGUYEN label ID goc voi thu tu task phi tuan tu, mo ta trong
+# `task_mapping_label_ids.json`. Code CIL gia dinh label tuan tu 0..33 theo thu tu task.
+# Bo data cu (da tuan tu san) khong co file json -> khong doi gi (tuong thich nguoc).
+_LABEL_LUT = None
+_LABEL_LUT_READY = False
+
+
+def _get_label_lut(data_path=None):
+    global _LABEL_LUT, _LABEL_LUT_READY
+    if _LABEL_LUT_READY:
+        return _LABEL_LUT
+    _LABEL_LUT_READY = True
+
+    candidates = []
+    if data_path:
+        candidates += [
+            os.path.join(data_path, "task_mapping_label_ids.json"),
+            os.path.join(data_path, "data", "task_mapping_label_ids.json"),
+        ]
+    if os.path.exists("/kaggle/input"):
+        candidates += sorted(glob.glob("/kaggle/input/**/task_mapping_label_ids.json", recursive=True))
+    candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                   "task_mapping_label_ids.json"))
+
+    for path in candidates:
+        if path and os.path.exists(path):
+            with open(path, "r") as f:
+                task_orders = json.load(f)
+            flat = [int(c) for task in task_orders for c in task]
+            if sorted(flat) != list(range(len(flat))):
+                print(f"[FFSCIL] CANH BAO: {path} khong phu kin 0..N-1, bo qua remap.")
+                continue
+            lut = torch.full((max(flat) + 1,), -1, dtype=torch.long)
+            for seq_id, orig_id in enumerate(flat):
+                lut[orig_id] = seq_id
+            _LABEL_LUT = lut
+            print(f"[FFSCIL] Remap label goc -> tuan tu theo: {path}")
+            return _LABEL_LUT
+
+    print("[FFSCIL] Khong thay task_mapping_label_ids.json -> gia dinh label da tuan tu.")
+    return None
+
+
+def _remap_labels(y, data_path=None):
+    lut = _get_label_lut(data_path)
+    if lut is None or y is None or len(y) == 0:
+        return y
+    out = lut[y.long()]
+    if (out < 0).any():
+        bad = torch.unique(y[out < 0]).tolist()
+        raise ValueError(f"[FFSCIL] Label {bad} khong co trong task_mapping_label_ids.json")
+    return out
 
 class CICIoT23PTDataset(Dataset):
     _global_test_cache = None  # Cache để tránh load file 1.9GB nhiều lần
 
     def __init__(self, data_path, client_id, task_id, is_train=True, fs_mode='1percent'):
-        fed_dir = "federated_data_10shot" if fs_mode == '10shot' else "federated_data_fewshot"
-        cen_dir = "centralized_data_10shot" if fs_mode == '10shot' else "centralized_data_fewshot"
+        if fs_mode == 'full':
+            fed_dir = "federated_data"
+            cen_dir = "centralized_data"
+        elif fs_mode == '10shot':
+            fed_dir = "federated_data_10shot"
+            cen_dir = "centralized_data_10shot"
+        else:
+            fed_dir = "federated_data_fewshot"
+            cen_dir = "centralized_data_fewshot"
 
         if is_train:
-            # Check multiple possible paths
+            # Check multiple possible paths (them layout PHANG: *.pt ngay trong data_path,
+            # vi Kaggle dataset khong giu thu muc con)
             possible_paths = [
                 os.path.join(data_path, fed_dir, f"client_{client_id}_task_{task_id}.pt"),
                 os.path.join(data_path, "10shot", fed_dir, f"client_{client_id}_task_{task_id}.pt"),
-                os.path.join(data_path, "fewshot", fed_dir, f"client_{client_id}_task_{task_id}.pt")
+                os.path.join(data_path, "fewshot", fed_dir, f"client_{client_id}_task_{task_id}.pt"),
+                os.path.join(data_path, f"client_{client_id}_task_{task_id}.pt"),
             ]
             file_path = next((p for p in possible_paths if os.path.exists(p)), possible_paths[0])
-            
+
             if os.path.exists(file_path):
                 data = torch.load(file_path, map_location='cpu', weights_only=False)
                 self.x = data['x']
-                self.y = data['y'].long()
+                self.y = _remap_labels(data['y'].long(), data_path)
             else:
                 self.x = torch.empty(0)
                 self.y = torch.empty(0, dtype=torch.long)
@@ -40,8 +111,8 @@ class CICIoT23PTDataset(Dataset):
                 CICIoT23PTDataset._global_test_cache = torch.load(test_file, map_location='cpu', weights_only=False)
             
             all_x = CICIoT23PTDataset._global_test_cache['x']
-            all_y = CICIoT23PTDataset._global_test_cache['y'].long()
-            
+            all_y = _remap_labels(CICIoT23PTDataset._global_test_cache['y'].long(), data_path)
+
             possible_central_paths = [
                 os.path.join(data_path, cen_dir, f"centralized_task_{task_id}.pt"),
                 os.path.join(data_path, "10shot", cen_dir, f"centralized_task_{task_id}.pt"),
@@ -51,15 +122,18 @@ class CICIoT23PTDataset(Dataset):
 
             if os.path.exists(central_path):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
-                task_labels = torch.unique(central_data['y'])
-                
-                mask = torch.isin(all_y, task_labels)
-                self.x = all_x[mask]
-                self.y = all_y[mask]
-                print(f"  Task {task_id} test set: {len(self.y)} samples.")
+                task_labels = _remap_labels(central_data['y'].long(), data_path).unique()
             else:
-                self.x = torch.empty(0)
-                self.y = torch.empty(0, dtype=torch.long)
+                # Bo data 100-client khong co centralized_data -> dung dai lop tuan tu chuan
+                # cua CIC-IoT23 (task 1..6 = 6,6,6,6,5,5 lop) sau khi da remap.
+                task_labels = torch.tensor(CICIOT23_TASK_CLASSES[task_id - 1], dtype=torch.long)
+                print(f"  Task {task_id}: khong co centralized_data, dung dai lop chuan "
+                      f"{task_labels.tolist()}")
+
+            mask = torch.isin(all_y, task_labels)
+            self.x = all_x[mask]
+            self.y = all_y[mask]
+            print(f"  Task {task_id} test set: {len(self.y)} samples.")
 
     def __len__(self):
         return len(self.x)

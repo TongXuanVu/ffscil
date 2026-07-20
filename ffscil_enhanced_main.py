@@ -443,10 +443,9 @@ def main(args):
                 'fixed_FC_dict': fixed_FC_dict,
                 'fixed_FC_dict2': fixed_FC_dict2,
             }
-            # Lưu file đặt tên theo task/round để giữ đủ lịch sử 180 checkpoint
-            save_checkpoint(checkpoint_data, False, args.output_dir, filename=checkpoint_name)
+            # Chi giu 1 file resume rolling (ghi de moi round) + 1 checkpoint moi task
+            # (luu o cuoi task, ten checkpoint_task{N}_final.pth) -> khong day dia Kaggle.
             save_checkpoint(checkpoint_data, False, args.output_dir, filename='checkpoint_latest.pth')
-            print(f"Checkpoints saved: {checkpoint_name} and checkpoint_latest.pth")
 
             # [EVAL] Đánh giá ngay sau mỗi round
             args.current_round = n_round + 1
@@ -485,7 +484,7 @@ if __name__ == '__main__':
     parser.add_argument('--test_start_task', default=0, type=int, help='Task ID để tiếp tục kiểm thử (0-indexed)')
     parser.add_argument('--test_start_round', default=0, type=int, help='Round ID để tiếp tục kiểm thử (0-indexed)')
     parser.add_argument('--use_amp', action='store_true', help='[OPT] Dùng Mixed Precision (AMP) để tăng tốc GPU')
-    parser.add_argument('--fs_mode', default='1percent', type=str, choices=['1percent', '10shot'], help='Chế độ few-shot data (1percent hoặc 10shot)')
+    parser.add_argument('--fs_mode', default='1percent', type=str, choices=['1percent', '10shot', 'full'], help='Chế độ data: 1percent / 10shot (few-shot) hoặc full (dùng federated_data đầy đủ)')
 
     # Parse known args to find the config name
     known_args, remaining = parser.parse_known_args()

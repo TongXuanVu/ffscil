@@ -6,8 +6,8 @@ def get_args_parser(subparser):
     subparser.add_argument('--fs_epochs', default=1, type=int) # Few-shot task epochs
     subparser.add_argument('--num_tasks', default=6, type=int)
     subparser.add_argument('--nb_classes', default=36, type=int)
-    subparser.add_argument('--num_clients', default=10, type=int)
-    subparser.add_argument('--local_clients', default=10, type=int)
+    subparser.add_argument('--num_clients', default=100, type=int)  # bo data '100 client'
+    subparser.add_argument('--local_clients', default=100, type=int)  # so client tham gia moi round (giam de chay nhanh hon)
     subparser.add_argument('--rounds_per_task', default=30, type=int)
     subparser.add_argument('--base_classes', default=6, type=int)
     subparser.add_argument('--fs_classes', default=6, type=int)
