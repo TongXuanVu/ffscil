@@ -141,6 +141,10 @@ class CICIoT23PTDataset(Dataset):
     def __getitem__(self, index):
         return self.x[index], self.y[index]
 
+# Cache val dataset theo (task_id, fs_mode) — dung chung cho MOI client
+_VAL_DS_CACHE = {}
+
+
 def build_continual_dataloader(args, client_id=0, specific_task=None):
     """
     Build dataloaders for class-incremental tasks.
@@ -176,7 +180,15 @@ def build_continual_dataloader(args, client_id=0, specific_task=None):
             train_loader = None
 
         # 2. Load Validation Data (For current and past tasks)
-        val_ds = CICIoT23PTDataset(data_path, client_id, t, is_train=False, fs_mode=fs_mode)
+        # QUAN TRONG: val set KHONG phu thuoc client_id (loc tu global_test_data theo task),
+        # nen cache lai theo task. Neu khong, voi 100 client se dung lai 100 ban sao
+        # ~2.5M mau moi ban -> het RAM (kernel bi OOM kill).
+        _val_key = (t, fs_mode)
+        if _val_key in _VAL_DS_CACHE:
+            val_ds = _VAL_DS_CACHE[_val_key]
+        else:
+            val_ds = CICIoT23PTDataset(data_path, client_id, t, is_train=False, fs_mode=fs_mode)
+            _VAL_DS_CACHE[_val_key] = val_ds
         val_loader = DataLoader(
             val_ds, batch_size=args.batch_size, 
             shuffle=False, num_workers=args.num_workers, pin_memory=args.pin_mem
