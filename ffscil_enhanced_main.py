@@ -379,7 +379,17 @@ def main(args):
                 print(f"Skipping Round {n_round+1} for Task {task_id+1}: No clients have data.")
                 continue
                 
-            clients_weight = [clients_participations[i] for i in active_clients]
+            # Trong so tong hop.
+            # 'samples' (mac dinh) = FedAvg CHUAN: can theo so mau train cua tung client,
+            #   giong LCwoF-FL (aggregate_fedavg) va HFIN (FedWeightedAvg) -> so sanh duoc.
+            # 'participation' = hanh vi goc cua FFSCIL: can theo so lan client da tham gia,
+            #   nghia la MOI client nang bang nhau khi local_clients = num_clients. Voi
+            #   partition 100-client (client 40 co 49 mau vs client 22 co 622k mau) thi
+            #   cach nay pha loang tin hieu -> model sup ve du doan 1 lop.
+            if getattr(args, 'agg_weight', 'samples') == 'samples':
+                clients_weight = [len(data_loaders[i][task_id]['train'].dataset) for i in active_clients]
+            else:
+                clients_weight = [clients_participations[i] for i in active_clients]
 
             # Local Training
             if task_id == 0:
@@ -484,6 +494,9 @@ if __name__ == '__main__':
     parser.add_argument('--test_start_task', default=0, type=int, help='Task ID để tiếp tục kiểm thử (0-indexed)')
     parser.add_argument('--test_start_round', default=0, type=int, help='Round ID để tiếp tục kiểm thử (0-indexed)')
     parser.add_argument('--use_amp', action='store_true', help='[OPT] Dùng Mixed Precision (AMP) để tăng tốc GPU')
+    parser.add_argument('--agg_weight', default='samples', type=str, choices=['samples', 'participation'],
+                        help='Trọng số khi tổng hợp: samples = FedAvg chuẩn theo số mẫu train (mặc định); '
+                             'participation = theo số lần tham gia (hành vi gốc của FFSCIL)')
     parser.add_argument('--fs_mode', default='1percent', type=str, choices=['1percent', '10shot', 'full'], help='Chế độ data: 1percent / 10shot (few-shot) hoặc full (dùng federated_data đầy đủ)')
 
     # Parse known args to find the config name
