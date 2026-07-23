@@ -34,6 +34,26 @@ import copy
 
 from piplib.xpip_engine_utils import *
 
+# ── Phan bo lop moi task (khop data split [6,6,6,6,5,5] = 34 lop) ────────────
+# CIC-IoT23 chia khong deu: 4 task dau 6 lop, 2 task cuoi 5 lop. Cong thuc cu
+# base + task_id*fs (deu 6) -> task 5 dư 1 lop, task 6 tran ra lop 34,35 khong ton tai.
+def _task_class_range(task_id, args):
+    inc = getattr(args, "task_increments", None)
+    if inc:
+        if isinstance(inc, str):
+            inc = [int(x) for x in inc.replace(",", " ").split()]
+        cum = [0]
+        for x in inc:
+            cum.append(cum[-1] + x)
+        task_id = min(task_id, len(inc) - 1)
+        return cum[task_id], cum[task_id + 1]
+    # Fallback: cong thuc deu cu
+    if task_id > 0:
+        return (args.base_classes + (task_id - 1) * args.fs_classes,
+                args.base_classes + task_id * args.fs_classes)
+    return 0, args.base_classes
+
+
 def train_one_epoch(model: torch.nn.Module, original_model: torch.nn.Module, 
                     criterion, data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, max_norm: float = 0,
@@ -129,16 +149,11 @@ def train_one_epoch_with_available_classes(model: torch.nn.Module, original_mode
     
 
     if available_classes==None :
-        if task_id > 0:
-            min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-            max_c = args.base_classes + ((task_id)*args.fs_classes)
-        else:
-            min_c = 0
-            max_c = args.base_classes 
+        min_c, max_c = _task_class_range(task_id, args)
         all_classes = [item for item in range(min_c, max_c)]
         print("all classes:")
         print(all_classes)
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
     
     
     print("available classes:")
@@ -239,17 +254,12 @@ def train_one_epoch_with_available_classes_v2(model: torch.nn.Module, original_m
     
 
     if available_classes==None :
-        if task_id > 0:
-            min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-            max_c = args.base_classes + ((task_id)*args.fs_classes)
-        else:
-            min_c = 0
-            max_c = args.base_classes 
+        min_c, max_c = _task_class_range(task_id, args)
 
         all_classes = [item for item in range(min_c, max_c)]
         print("all classes:")
         print(all_classes)
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
     
     print("available classes:")
     print(available_classes)
@@ -415,15 +425,10 @@ def train_pertask(models, models_without_ddp, original_models,
 
     
     # Set available classes
-    if task_id > 0:
-        min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-        max_c = args.base_classes + ((task_id)*args.fs_classes)
-    else:
-        min_c = 0
-        max_c = args.base_classes 
+    min_c, max_c = _task_class_range(task_id, args)
     all_classes = [item for item in range(min_c, max_c)]
     for n in range(len(models)):
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
         available_classes_all.append(available_classes)
     
     for epoch in range(args.epochs):
@@ -516,15 +521,10 @@ def train_pertask_v2(models, models_without_ddp, original_models,
 
     
     # Set available classes
-    if task_id > 0:
-        min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-        max_c = args.base_classes + ((task_id)*args.fs_classes)
-    else:
-        min_c = 0
-        max_c = args.base_classes 
+    min_c, max_c = _task_class_range(task_id, args)
     all_classes = [item for item in range(min_c, max_c)]
     for n in range(len(models)):
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
         available_classes_all.append(available_classes)
     
     for epoch in range(args.epochs):
@@ -569,17 +569,12 @@ def train_fs_one_epoch_with_available_classes(model: torch.nn.Module, original_m
     header = f'Train: Epoch[{epoch+1:{int(math.log10(args.epochs))+1}}/{args.epochs}]'
     
     if available_classes==None :
-        if task_id > 0:
-            min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-            max_c = args.base_classes + ((task_id)*args.fs_classes)
-        else:
-            min_c = 0
-            max_c = args.base_classes 
+        min_c, max_c = _task_class_range(task_id, args)
 
         all_classes = [item for item in range(min_c, max_c)]
         print("all classes:")
         print(all_classes)
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
     
 
     available_classes = sorted(available_classes)
@@ -746,17 +741,12 @@ def train_fs_one_epoch_with_available_classes_v2(model: torch.nn.Module, origina
     header = f'Train: Epoch[{epoch+1:{int(math.log10(args.epochs))+1}}/{args.epochs}]'
     
     if available_classes==None :
-        if task_id > 0:
-            min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-            max_c = args.base_classes + ((task_id)*args.fs_classes)
-        else:
-            min_c = 0
-            max_c = args.base_classes 
+        min_c, max_c = _task_class_range(task_id, args)
 
         all_classes = [item for item in range(min_c, max_c)]
         print("all classes:")
         print(all_classes)
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
     
 
     available_classes = sorted(available_classes)
@@ -1036,16 +1026,11 @@ def train_fs_pertask(models, models_without_ddp, original_models,
 
     available_classes_all=[]
     # Set available classes
-    if task_id > 0:
-        min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-        max_c = args.base_classes + ((task_id)*args.fs_classes)
-    else:
-        min_c = 0
-        max_c = args.base_classes 
+    min_c, max_c = _task_class_range(task_id, args)
 
     all_classes = [item for item in range(min_c, max_c)]
     for n in range(len(models)):
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
         available_classes_all.append(available_classes)
     
     clients_optimal_proto = [[]]*len(models)
@@ -1176,16 +1161,11 @@ def train_fs_pertask_v2(models, models_without_ddp, original_models,
 
     available_classes_all=[]
     # Set available classes
-    if task_id > 0:
-        min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-        max_c = args.base_classes + ((task_id)*args.fs_classes)
-    else:
-        min_c = 0
-        max_c = args.base_classes 
+    min_c, max_c = _task_class_range(task_id, args)
 
     all_classes = [item for item in range(min_c, max_c)]
     for n in range(len(models)):
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
         available_classes_all.append(available_classes)
     
     for epoch in range(args.epochs):
@@ -1227,15 +1207,10 @@ def generate_prototype_only(models, models_without_ddp, original_models,
     # Set available classes
     available_classes_all=[]
 
-    if task_id > 0:
-        min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-        max_c = args.base_classes + ((task_id)*args.fs_classes)
-    else:
-        min_c = 0
-        max_c = args.base_classes 
+    min_c, max_c = _task_class_range(task_id, args)
     all_classes = [item for item in range(min_c, max_c)]
     for n in range(len(models)):
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
         available_classes_all.append(available_classes)
     
     clients_prototype = []
@@ -1267,16 +1242,11 @@ def get_prototype_with_available_classes(model: torch.nn.Module, original_model:
 
     print("Generate prototype")
     if available_classes==None :
-        if task_id > 0:
-            min_c = args.base_classes + ((task_id-1)*args.fs_classes)
-            max_c = args.base_classes + ((task_id)*args.fs_classes)
-        else:
-            min_c = 0
-            max_c = args.base_classes 
+        min_c, max_c = _task_class_range(task_id, args)
         all_classes = [item for item in range(min_c, max_c)]
         # print("all classes:")
         # print(all_classes)
-        available_classes = random.sample(all_classes, args.available_classes)
+        available_classes = random.sample(all_classes, min(args.available_classes, len(all_classes)))
     
     print("available classes:")
     print(available_classes)

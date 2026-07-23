@@ -5,7 +5,13 @@ def get_args_parser(subparser):
     subparser.add_argument('--epochs', default=1, type=int) # Base task epochs
     subparser.add_argument('--fs_epochs', default=1, type=int) # Few-shot task epochs
     subparser.add_argument('--num_tasks', default=6, type=int)
+    # Head giu 36 output de tuong thich checkpoint task 1-4 da train (khi resume);
+    # 2 neuron thua (34,35) khong co du lieu nen khong duoc train, vo hai.
     subparser.add_argument('--nb_classes', default=36, type=int)
+    # Phan bo lop moi task khop data split: 4 task dau 6 lop, 2 task cuoi 5 lop = 34 lop.
+    # Neu de trong -> dung cong thuc deu base+fs va se tran ra lop 34,35 khong ton tai o task 6.
+    subparser.add_argument('--task_increments', default='6,6,6,6,5,5', type=str,
+                           help='So lop moi task, cach nhau bang dau phay (khop data split)')
     subparser.add_argument('--num_clients', default=100, type=int)  # bo data '100 client'
     subparser.add_argument('--local_clients', default=100, type=int)  # so client tham gia moi round (giam de chay nhanh hon)
     subparser.add_argument('--rounds_per_task', default=30, type=int)
