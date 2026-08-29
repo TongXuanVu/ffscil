@@ -12,6 +12,41 @@ CICIOT23_TASK_CLASSES = [
     list(range(18, 24)), list(range(24, 29)), list(range(29, 34)),
 ]
 
+# CAN-bus / IoV: 13 lop, task 1..5 gom 3,3,3,2,2 lop
+CAN_IOV_TASK_CLASSES = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12],
+]
+
+# ── Bo du lieu nao dang chay ─────────────────────────────────────────────────
+# remap_nhan: CIC-IoT23 100-client giu label ID GOC voi thu tu task phi tuan tu
+# nen phai remap; CAN-bus/IoV da tuan tu 0..12 san nen KHONG duoc remap.
+#
+# Cong tac nay BAT BUOC phai co, vi _get_label_lut() tim file json o hai cho
+# nguy hiem: (1) glob "/kaggle/input/**" — vo phai bang cua IoT neu dataset IoT
+# con gan kem; (2) ban du phong nhung san trong repo (data/task_mapping_label_ids.json)
+# — luon ton tai nen khong gan kem IoT cung van vo phai. Ca hai deu anh xa nham
+# nhan IoV ma khong bao loi gi.
+CAU_HINH_BO = {
+    "cic_iot23": {"task_classes": CICIOT23_TASK_CLASSES, "remap_nhan": True},
+    "can_iov":   {"task_classes": CAN_IOV_TASK_CLASSES,  "remap_nhan": False},
+}
+BO_HIEN_TAI = "cic_iot23"          # mac dinh, giu tuong thich nguoc
+
+
+def set_dataset(ten):
+    """Chon bo du lieu. Goi TRUOC khi build dataloader."""
+    global BO_HIEN_TAI, _LABEL_LUT, _LABEL_LUT_READY
+    if ten not in CAU_HINH_BO:
+        raise SystemExit(f"[FFSCIL] Dataset khong ho tro: {ten}. Chi co: {list(CAU_HINH_BO)}")
+    BO_HIEN_TAI = ten
+    _LABEL_LUT, _LABEL_LUT_READY = None, False    # xoa cache LUT cu
+    _VAL_DS_CACHE.clear()                          # xoa cache tap val cua bo cu
+    CICIoT23PTDataset._global_test_cache = None    # xoa cache tap test cua bo cu
+    cfg = CAU_HINH_BO[ten]
+    n = sum(len(t) for t in cfg["task_classes"])
+    print(f"[FFSCIL] set_dataset({ten}): {n} lop, {len(cfg['task_classes'])} task, "
+          f"remap nhan: {'CO' if cfg['remap_nhan'] else 'KHONG'}")
+
 # ── Remap label cho bo data 100-client ────────────────────────────────────────
 # Bo 100-client giu NGUYEN label ID goc voi thu tu task phi tuan tu, mo ta trong
 # `task_mapping_label_ids.json`. Code CIL gia dinh label tuan tu 0..33 theo thu tu task.
@@ -25,6 +60,13 @@ def _get_label_lut(data_path=None):
     if _LABEL_LUT_READY:
         return _LABEL_LUT
     _LABEL_LUT_READY = True
+
+    # Bo khong can remap thi dung han o day — KHONG duoc roi xuong phan tim file
+    # ben duoi, vi no se vo phai bang cua bo khac (xem ghi chu o CAU_HINH_BO).
+    if not CAU_HINH_BO[BO_HIEN_TAI]["remap_nhan"]:
+        print(f"[FFSCIL] Bo '{BO_HIEN_TAI}' co nhan tuan tu san "
+              f"-> KHONG remap (bo qua moi task_mapping_label_ids.json).")
+        return None
 
     candidates = []
     if data_path:
@@ -124,9 +166,14 @@ class CICIoT23PTDataset(Dataset):
                 central_data = torch.load(central_path, map_location='cpu', weights_only=False)
                 task_labels = _remap_labels(central_data['y'].long(), data_path).unique()
             else:
-                # Bo data 100-client khong co centralized_data -> dung dai lop tuan tu chuan
-                # cua CIC-IoT23 (task 1..6 = 6,6,6,6,5,5 lop) sau khi da remap.
-                task_labels = torch.tensor(CICIOT23_TASK_CLASSES[task_id - 1], dtype=torch.long)
+                # Bo data 100-client khong co centralized_data -> dung dai lop tuan tu
+                # chuan cua bo dang chay (IoT: 6,6,6,6,5,5 | IoV: 3,3,3,2,2) sau remap.
+                _tc = CAU_HINH_BO[BO_HIEN_TAI]["task_classes"]
+                if task_id - 1 >= len(_tc):
+                    raise SystemExit(
+                        f"[FFSCIL] task_id={task_id} vuot so task cua bo "
+                        f"'{BO_HIEN_TAI}' ({len(_tc)}). Kiem tra --num_tasks.")
+                task_labels = torch.tensor(_tc[task_id - 1], dtype=torch.long)
                 print(f"  Task {task_id}: khong co centralized_data, dung dai lop chuan "
                       f"{task_labels.tolist()}")
 

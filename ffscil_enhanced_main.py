@@ -52,6 +52,35 @@ def main(args):
     random.seed(seed)
     cudnn.benchmark = True
 
+    # ── Chon bo du lieu TRUOC khi dung dataloader ────────────────────────────
+    # Quyet dinh (a) dai lop moi task, (b) co remap nhan hay khong. Neu quen goi,
+    # bo IoV se bi ap bang remap cua IoT ma khong bao loi gi.
+    from data.ffscil_datasets import set_dataset as _set_ds, CAU_HINH_BO as _CFG
+    _set_ds(getattr(args, 'dataset', 'cic_iot23'))
+
+    # Doi chieu cau hinh voi DU LIEU THAT — dung han neu lech, thay vi chay
+    # 150 round roi moi phat hien sai so lop / so dac trung.
+    _cfg = _CFG[args.dataset]
+    _n_lop = sum(len(t) for t in _cfg["task_classes"])
+    if args.num_tasks != len(_cfg["task_classes"]):
+        raise SystemExit(f"[FFSCIL] --num_tasks={args.num_tasks} nhung bo "
+                         f"'{args.dataset}' co {len(_cfg['task_classes'])} task.")
+    if args.nb_classes < _n_lop:
+        raise SystemExit(f"[FFSCIL] --nb_classes={args.nb_classes} nho hon so lop "
+                         f"that ({_n_lop}) cua bo '{args.dataset}'.")
+    _gt = os.path.join(args.data_path, "global_test_data.pt")
+    if os.path.exists(_gt):
+        _d = torch.load(_gt, map_location='cpu', weights_only=False)
+        _thuc_lop, _thuc_feat = int(_d['y'].max()) + 1, _d['x'].shape[1]
+        del _d
+        if _thuc_lop != _n_lop:
+            raise SystemExit(f"[FFSCIL] global_test_data.pt co {_thuc_lop} lop nhung "
+                             f"bo '{args.dataset}' khai bao {_n_lop}. Gan nham dataset?")
+        if _thuc_feat != args.input_size:
+            raise SystemExit(f"[FFSCIL] global_test_data.pt co {_thuc_feat} dac trung "
+                             f"nhung --input-size={args.input_size}. Gan nham dataset?")
+        print(f"[FFSCIL] Da doi chieu du lieu that: {_thuc_lop} lop, {_thuc_feat} dac trung.")
+
     data_loaders=[]
     class_masks=[]
     models_list=[]
@@ -523,6 +552,9 @@ if __name__ == '__main__':
     elif config_name == 'ffscil_cicio23_cnn1d':
         from configs.ffscil_cicio23_cnn1d import get_args_parser
         config_parser = subparser.add_parser('ffscil_cicio23_cnn1d')
+    elif config_name == 'ffscil_caniov_cnn1d':
+        from configs.ffscil_caniov_cnn1d import get_args_parser
+        config_parser = subparser.add_parser('ffscil_caniov_cnn1d')
     else:
         # Generic parser if name doesn't match predefined ones but we still want to try
         from configs.ffscil_cifar100_9tasks_60bases_5ways import get_args_parser
