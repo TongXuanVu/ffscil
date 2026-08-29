@@ -135,7 +135,12 @@ class CICIoT23PTDataset(Dataset):
 
             if os.path.exists(file_path):
                 data = torch.load(file_path, map_location='cpu', weights_only=False)
-                self.x = data['x']
+                # .float() BAT BUOC: bo IoV luu x dang float16 de tiet kiem dia,
+                # trong khi trong so model la float32 -> conv1d bao
+                # "Input type (c10::Half) and bias type (float) should be the same".
+                # HFIN va F2SCIL da ep kieu san, rieng FFSCIL thi chua.
+                # No-op neu du lieu von da la float32 (bo IoT).
+                self.x = data['x'].float()
                 self.y = _remap_labels(data['y'].long(), data_path)
             else:
                 self.x = torch.empty(0)
@@ -178,9 +183,13 @@ class CICIoT23PTDataset(Dataset):
                       f"{task_labels.tolist()}")
 
             mask = torch.isin(all_y, task_labels)
-            self.x = all_x[mask]
+            # Ep kieu SAU khi loc, khong phai truoc: cache giu ban float16 (2,6 GB
+            # cho 42 trieu mau) va chi phan da loc moi phinh len float32. Ep truoc
+            # se giu ca hai ban float32 cung luc -> them 5,2 GB vo ich.
+            self.x = all_x[mask].float()
             self.y = all_y[mask]
-            print(f"  Task {task_id} test set: {len(self.y)} samples.")
+            print(f"  Task {task_id} test set: {len(self.y)} samples, "
+                  f"dtype {self.x.dtype}.")
 
     def __len__(self):
         return len(self.x)
