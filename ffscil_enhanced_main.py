@@ -213,7 +213,23 @@ def main(args):
             all_global_prototype_var = checkpoint.get('all_global_prototype_var', {})
             fixed_FC_dict = checkpoint.get('fixed_FC_dict')
             fixed_FC_dict2 = checkpoint.get('fixed_FC_dict2')
-            
+
+            # Checkpoint sinh truoc ban va nay co fixed_FC_dict=None (xem ghi chu
+            # o khoi "End of Task logic"). Resume tu no se chay het task roi chet
+            # o head.load_state_dict(None). Dung lai tu state_dict: fixed_FC_dict
+            # CHINH LA head.state_dict() cua cung mo hinh, chi khac tien to 'head.'.
+            if fixed_FC_dict is None and checkpoint.get('state_dict'):
+                _head = {k[len('head.'):]: v for k, v in checkpoint['state_dict'].items()
+                         if k.startswith('head.')}
+                if _head:
+                    fixed_FC_dict = copy.deepcopy(_head)
+                    fixed_FC_dict2 = copy.deepcopy(_head)
+                    print(f"=> RESUME: fixed_FC_dict bi None trong checkpoint cu "
+                          f"-> da dung lai tu state_dict ({len(_head)} tham so head).")
+                else:
+                    print("=> RESUME: CANH BAO: fixed_FC_dict=None va khong tim thay "
+                          "tham so 'head.' trong state_dict. Task tiep theo se loi.")
+
             if start_round >= args.rounds_per_task:
                 start_round = 0
                 start_task += 1
@@ -505,9 +521,20 @@ def main(args):
             server_model_without_ddp.head.load_state_dict(fixed_FC_dict2)
 
         # [OPT] Lưu checkpoint đặt tên theo task (chỉ 6 lần, tiết kiệm I/O)
+        #
+        # `checkpoint_data` duoc dung o round CUOI, tuc TRUOC khi khoi
+        # "End of Task logic" ben tren gan fixed_FC_dict (dong 500). Neu luu
+        # nguyen ban chup do thi checkpoint cuoi task 0 mang fixed_FC_dict=None.
+        # Resume tu no se chay het task tiep theo roi CHET o
+        # `head.load_state_dict(fixed_FC_dict)` cua nhanh else — dung sau round
+        # cuoi nen khong kip ghi checkpoint_task{N}_final.pth.
+        # Cap nhat lai hai khoa nay ngay truoc khi ghi.
+        checkpoint_data['fixed_FC_dict'] = fixed_FC_dict
+        checkpoint_data['fixed_FC_dict2'] = fixed_FC_dict2
         task_ckpt_name = f'checkpoint_task{task_id}_final.pth'
         save_checkpoint(checkpoint_data, False, args.output_dir, filename=task_ckpt_name)
-        print(f"[TASK {task_id+1}] Task checkpoint saved: {task_ckpt_name}")
+        print(f"[TASK {task_id+1}] Task checkpoint saved: {task_ckpt_name} "
+              f"(fixed_FC_dict: {'co' if fixed_FC_dict is not None else 'None'})")
 
 
     total_time = time.time() - start_time
