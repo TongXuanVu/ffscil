@@ -91,7 +91,31 @@ def main(args):
 
     # Initial class mask build (to get test_sizes and class structure)
     _, full_class_mask = build_continual_dataloader(args, client_id=0)
-    
+
+    def _mask_luy_ke(task_id):
+        """Mask danh gia = MOI lop da hoc tu task 0..task_id (luy ke).
+
+        Vi sao can: head cua cnn1d_prompt co dinh nb_classes lop ngay tu task
+        dau (`nn.Linear(embed_dim, num_classes)`), nen logits cua cac lop CHUA
+        hoc van ton tai va mang trong so gan nhu ngau nhien. Truoc day cho cho
+        class_mask nay la None -> danh gia khong mask -> mo hinh doan ca lop
+        chua hoc. O task 1 bo IoV (3/13 lop da hoc) dieu do lam acc1 nhay qua
+        lai giua 99.62% (trung lop Benign da hoc) va 0.03% (trung mot lop chua
+        hoc), loss leo tu 0.59 len 2.27. Day la loi do thiet ke head co dinh,
+        khong phai phuong phap kem.
+
+        HFIN/SPCIL/F2SCIL dung head TANG DAN nen ve ban chat da mask san theo
+        tap luy ke. Mask nhu duoi day dat FFSCIL ve dung mat bang do.
+
+        CHU Y: KHONG dung `full_class_mask[task_id]` (chi cac lop cua rieng
+        task hien tai) — lam vay thanh task-incremental, tuc biet truoc mau
+        thuoc task nao, de hon han va KHONG so ngang hang duoc voi cac bai
+        khac trong luan van.
+        """
+        seen = sorted({c for t in range(task_id + 1)
+                       for c in (full_class_mask[t] or [])})
+        return [seen] * len(full_class_mask)
+
     # Test sizes for weighted metrics (pre-compute using metadata or one-by-one)
     test_sizes = []
     for t in range(1, args.num_tasks + 1):
@@ -272,7 +296,7 @@ def main(args):
                 print(f"\n[TEST MODE] Đánh giá Task {t+1}...")
                 evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
                                     criterion, data_loaders[0], server_optimizer, None,
-                                    device, None, t, test_sizes, 
+                                    device, _mask_luy_ke(t), t, test_sizes,
                                     checkpoint.get('all_global_prototype', {}), 
                                     checkpoint.get('all_global_prototype_var', {}), args)
             return
@@ -327,7 +351,7 @@ def main(args):
             # Đánh giá trên tất cả các task đã học tính đến checkpoint này
             stats = evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
                                 criterion, data_loaders[0], server_optimizer, None,
-                                device, None, curr_task, test_sizes, 
+                                device, _mask_luy_ke(curr_task), curr_task, test_sizes,
                                 checkpoint.get('all_global_prototype', {}), 
                                 checkpoint.get('all_global_prototype_var', {}), args)
             
@@ -507,7 +531,7 @@ def main(args):
             print(f"\n[ROUND EVAL] Đánh giá sau Round {n_round+1} của Task {task_id+1}...")
             evaluate_server_global_model3(server_model, server_model_without_ddp, original_model,
                                 criterion, data_loaders[0], server_optimizer, None,
-                                device, None, task_id, test_sizes, 
+                                device, _mask_luy_ke(task_id), task_id, test_sizes,
                                 all_global_prototype, all_global_prototype_var, args)
 
         # End of Task logic
