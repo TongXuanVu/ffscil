@@ -434,11 +434,20 @@ def main(args):
             idx_notrain = [x for x in clients_index if clients_participations[x]==0]
             idx_trained = [x for x in clients_index if clients_participations[x]>0]
             
-            FedDistribute(server_model,[models_list[i] for i in idx_trained],args.distributed)
-            if task_id == 0:
-                FedDistributeWithHead(server_model,[models_list[i] for i in idx_notrain],args.distributed)
+            # Phat TOAN BO tham so server (backbone + head + prompt) ve client.
+            # Ban goc chi phat prompt vi L2P/DualPrompt dung backbone ViT da
+            # pretrain, dong bang, moi client giong nhau. CNN1D o day hoc tu
+            # dau nen phai dong bo day du, neu khong server va client lech han.
+            if getattr(args, 'agg_full_model', True):
+                FedDistributeFull(server_model,
+                                  [models_list[i] for i in idx_trained + idx_notrain],
+                                  args.distributed)
             else:
-                FedDistribute(server_model,[models_list[i] for i in idx_notrain],args.distributed)
+                FedDistribute(server_model,[models_list[i] for i in idx_trained],args.distributed)
+                if task_id == 0:
+                    FedDistributeWithHead(server_model,[models_list[i] for i in idx_notrain],args.distributed)
+                else:
+                    FedDistribute(server_model,[models_list[i] for i in idx_notrain],args.distributed)
 
             for i in clients_index: clients_participations[i] += 1
             
@@ -499,7 +508,16 @@ def main(args):
                 all_global_prototype[k] = global_prototype[k]
                 all_global_prototype_var[k] = global_prototype_var[k]
 
-            if n_round < (args.rounds_per_task - 1):
+            # Tong hop TOAN BO tham so moi round. Ban goc chi gom prompt, con
+            # head chi gom dung mot lan o round cuoi task 0 va backbone thi
+            # khong bao gio -> server danh gia bang backbone ngau nhien, xuat
+            # mot hang so va hang so do doi tung round (acc1 nhay giua 99.62%
+            # va 0.03% tren bo IoV). Dat --no_agg_full_model de quay ve hanh
+            # vi goc khi can doi chung.
+            if getattr(args, 'agg_full_model', True):
+                FedWeightedAvgFull(server_model, [models_list[i] for i in active_clients],
+                                   clients_weight, args.distributed)
+            elif n_round < (args.rounds_per_task - 1):
                 FedWeightedAvg(server_model, [models_list[i] for i in active_clients], clients_weight, args.distributed)
             else:
                 if task_id == 0:
@@ -535,7 +553,10 @@ def main(args):
                                 all_global_prototype, all_global_prototype_var, args)
 
         # End of Task logic
-        FedDistribute(server_model, models_list, args.distributed)
+        if getattr(args, 'agg_full_model', True):
+            FedDistributeFull(server_model, models_list, args.distributed)
+        else:
+            FedDistribute(server_model, models_list, args.distributed)
         if task_id == 0:
             fixed_FC_dict = copy.deepcopy(server_model.head.state_dict())
             fixed_FC_dict2 = copy.deepcopy(server_model_without_ddp.head.state_dict())
@@ -577,6 +598,12 @@ if __name__ == '__main__':
     parser.add_argument('--agg_weight', default='samples', type=str, choices=['samples', 'participation'],
                         help='Trọng số khi tổng hợp: samples = FedAvg chuẩn theo số mẫu train (mặc định); '
                              'participation = theo số lần tham gia (hành vi gốc của FFSCIL)')
+    parser.add_argument('--no_agg_full_model', dest='agg_full_model', action='store_false',
+                        default=True,
+                        help='Quay về hành vi GỐC: chỉ tổng hợp prompt (head gom 1 lần ở round '
+                             'cuối task 0, backbone không bao giờ). Mặc định TẮT cờ này, tức '
+                             'tổng hợp toàn bộ tham số mỗi round — bắt buộc với CNN1D vì không '
+                             'có backbone pretrain đóng băng như ViT của L2P/DualPrompt gốc.')
     parser.add_argument('--fs_mode', default='1percent', type=str, choices=['1percent', '10shot', 'full'], help='Chế độ data: 1percent / 10shot (few-shot) hoặc full (dùng federated_data đầy đủ)')
 
     # Parse known args to find the config name

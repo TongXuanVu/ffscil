@@ -10,6 +10,61 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 import random
 
+
+def FedWeightedAvgFull(server, models, clients_weight, distributed):
+    """Tong hop TOAN BO tham so (backbone + head + prompt) theo trong so so mau.
+
+    Vi sao can ham nay: cac ham Fed* co san chi tong hop `e_prompt.prompt` va
+    `e_prompt.prompt_key`; head chi duoc tong hop DUNG MOT LAN o round cuoi
+    task 0, con backbone CNN1D thi KHONG BAO GIO. Do la thiet ke dung cho
+    L2P/DualPrompt goc, noi backbone la ViT da pretrain va dong bang — moi
+    client dung chung mot backbone bat bien nen khong can dong bo.
+
+    Voi du lieu bang 1D thi khong co backbone pretrain nao; backbone phai hoc
+    tu dau. Bo qua no khien server danh gia bang backbone ngau nhien -> dac
+    trung khong phan biet duoc mau -> mo hinh xuat mot hang so, va hang so do
+    doi theo prompt tung round. Do chinh la hien tuong acc1 nhay giua 99.62%
+    (toan lop Benign) va 0.03% (toan lop hiem) tren bo IoV.
+
+    Luu y ky thuat: cac buffer kieu nguyen (`num_batches_tracked` cua
+    BatchNorm) khong duoc lay trung binh — nhan trong so float vao se sai kieu
+    va vo nghia; lay thang cua client dau tien.
+    """
+    srv = server.module if distributed else server
+    nets = [m.module if distributed else m for m in models]
+    if not nets:
+        return
+    total = float(sum(clients_weight))
+    if total <= 0:
+        return
+    with torch.no_grad():
+        sd_srv = srv.state_dict()
+        sds = [n.state_dict() for n in nets]
+        for k, v in sd_srv.items():
+            if not torch.is_floating_point(v):
+                v.copy_(sds[0][k])
+                continue
+            acc = torch.zeros_like(v, dtype=torch.float32)
+            for w, sd in zip(clients_weight, sds):
+                acc += sd[k].to(torch.float32) * float(w)
+            v.copy_((acc / total).to(v.dtype))
+    print("Aggregating full model done")
+
+
+def FedDistributeFull(server, clients, distributed):
+    """Phat TOAN BO tham so server ve client (di kem FedWeightedAvgFull).
+
+    `FedDistribute` goc chi phat lai prompt, nen backbone/head da tong hop o
+    server se khong bao gio toi duoc client. Phai phat day du thi vong lap
+    federated moi khep kin.
+    """
+    srv = server.module if distributed else server
+    with torch.no_grad():
+        sd = srv.state_dict()
+        for c in clients:
+            (c.module if distributed else c).load_state_dict(sd, strict=True)
+
+
 def FedAvg(server, models, distributed):
     
     # model_agg = copy.deepcopy(models[0])
