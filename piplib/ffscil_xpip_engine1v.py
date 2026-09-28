@@ -1365,6 +1365,17 @@ def evaluate(model: torch.nn.Module, original_model: torch.nn.Module, data_loade
                 #adding mask to output logits
                 mask = class_mask[task_id]
                 mask = torch.tensor(mask, dtype=torch.int64).to(device)
+                # [FIX] logits co the hep hon so lop mask du kien: nhanh prototype
+                # o tren tra ve logits rong `max_label` cot (= base_classes +
+                # task_id*fs_classes CUA SUB-TASK i dang duoc danh gia trong vong
+                # lap evaluate_till_now3, khong phai cua task hien tai dang huan
+                # luyen). Con class_mask (vd. tu _mask_luy_ke) la mask LUY KE toi
+                # task hien tai nen co the chua chi so lop >= logits.shape[1] khi
+                # i < task hien tai. index_fill voi chi so vuot bien cot gay loi
+                # CUDA "index out of bounds" (device-side assert). Cac chi so do
+                # von khong ton tai trong logits nen loai bo truoc khi index_fill
+                # khong lam thay doi ket qua, chi tranh crash.
+                mask = mask[mask < logits.shape[1]]
                 logits_mask = torch.ones_like(logits, device=device) * float('-inf')
                 logits_mask = logits_mask.index_fill(1, mask, 0.0)
                 logits = logits + logits_mask
@@ -1508,6 +1519,17 @@ def evaluate2(model: torch.nn.Module, original_model: torch.nn.Module, data_load
                 #adding mask to output logits
                 mask = class_mask[task_id]
                 mask = torch.tensor(mask, dtype=torch.int64).to(device)
+                # [FIX] logits co the hep hon so lop mask du kien: nhanh prototype
+                # o tren tra ve logits rong `max_label` cot (= base_classes +
+                # task_id*fs_classes CUA SUB-TASK i dang duoc danh gia trong vong
+                # lap evaluate_till_now3, khong phai cua task hien tai dang huan
+                # luyen). Con class_mask (vd. tu _mask_luy_ke) la mask LUY KE toi
+                # task hien tai nen co the chua chi so lop >= logits.shape[1] khi
+                # i < task hien tai. index_fill voi chi so vuot bien cot gay loi
+                # CUDA "index out of bounds" (device-side assert). Cac chi so do
+                # von khong ton tai trong logits nen loai bo truoc khi index_fill
+                # khong lam thay doi ket qua, chi tranh crash.
+                mask = mask[mask < logits.shape[1]]
                 logits_mask = torch.ones_like(logits, device=device) * float('-inf')
                 logits_mask = logits_mask.index_fill(1, mask, 0.0)
                 logits = logits + logits_mask
@@ -1707,6 +1729,17 @@ def evaluate3(model: torch.nn.Module, original_model: torch.nn.Module, data_load
                 #adding mask to output logits
                 mask = class_mask[task_id]
                 mask = torch.tensor(mask, dtype=torch.int64).to(device)
+                # [FIX] logits co the hep hon so lop mask du kien: nhanh prototype
+                # o tren tra ve logits rong `max_label` cot (= base_classes +
+                # task_id*fs_classes CUA SUB-TASK i dang duoc danh gia trong vong
+                # lap evaluate_till_now3, khong phai cua task hien tai dang huan
+                # luyen). Con class_mask (vd. tu _mask_luy_ke) la mask LUY KE toi
+                # task hien tai nen co the chua chi so lop >= logits.shape[1] khi
+                # i < task hien tai. index_fill voi chi so vuot bien cot gay loi
+                # CUDA "index out of bounds" (device-side assert). Cac chi so do
+                # von khong ton tai trong logits nen loai bo truoc khi index_fill
+                # khong lam thay doi ket qua, chi tranh crash.
+                mask = mask[mask < logits.shape[1]]
                 logits_mask = torch.ones_like(logits, device=device) * float('-inf')
                 logits_mask = logits_mask.index_fill(1, mask, 0.0)
                 logits = logits + logits_mask
@@ -1839,6 +1872,17 @@ def evaluate3a(model: torch.nn.Module, original_model: torch.nn.Module, data_loa
                 #adding mask to output logits
                 mask = class_mask[task_id]
                 mask = torch.tensor(mask, dtype=torch.int64).to(device)
+                # [FIX] logits co the hep hon so lop mask du kien: nhanh prototype
+                # o tren tra ve logits rong `max_label` cot (= base_classes +
+                # task_id*fs_classes CUA SUB-TASK i dang duoc danh gia trong vong
+                # lap evaluate_till_now3, khong phai cua task hien tai dang huan
+                # luyen). Con class_mask (vd. tu _mask_luy_ke) la mask LUY KE toi
+                # task hien tai nen co the chua chi so lop >= logits.shape[1] khi
+                # i < task hien tai. index_fill voi chi so vuot bien cot gay loi
+                # CUDA "index out of bounds" (device-side assert). Cac chi so do
+                # von khong ton tai trong logits nen loai bo truoc khi index_fill
+                # khong lam thay doi ket qua, chi tranh crash.
+                mask = mask[mask < logits.shape[1]]
                 logits_mask = torch.ones_like(logits, device=device) * float('-inf')
                 logits_mask = logits_mask.index_fill(1, mask, 0.0)
                 logits = logits + logits_mask
@@ -1957,6 +2001,17 @@ def evaluate3b(model: torch.nn.Module, original_model: torch.nn.Module, data_loa
                 #adding mask to output logits
                 mask = class_mask[task_id]
                 mask = torch.tensor(mask, dtype=torch.int64).to(device)
+                # [FIX] logits co the hep hon so lop mask du kien: nhanh prototype
+                # o tren tra ve logits rong `max_label` cot (= base_classes +
+                # task_id*fs_classes CUA SUB-TASK i dang duoc danh gia trong vong
+                # lap evaluate_till_now3, khong phai cua task hien tai dang huan
+                # luyen). Con class_mask (vd. tu _mask_luy_ke) la mask LUY KE toi
+                # task hien tai nen co the chua chi so lop >= logits.shape[1] khi
+                # i < task hien tai. index_fill voi chi so vuot bien cot gay loi
+                # CUDA "index out of bounds" (device-side assert). Cac chi so do
+                # von khong ton tai trong logits nen loai bo truoc khi index_fill
+                # khong lam thay doi ket qua, chi tranh crash.
+                mask = mask[mask < logits.shape[1]]
                 logits_mask = torch.ones_like(logits, device=device) * float('-inf')
                 logits_mask = logits_mask.index_fill(1, mask, 0.0)
                 logits = logits + logits_mask
